@@ -921,7 +921,6 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 			local_pos.vx = x_est[1];
 			local_pos.y = y_est[0];
 			local_pos.vy = y_est[1];
-			local_pos.z = z_est[0];
 			local_pos.vz = z_est[1];
 			local_pos.landed = landed;
 			local_pos.yaw = att.yaw;
@@ -932,6 +931,7 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 			if (local_pos.dist_bottom_valid) {
 				local_pos.dist_bottom = -z_est[0] - surface_offset;
 				local_pos.dist_bottom_rate = -z_est[1] - surface_offset_rate;
+				local_pos.z = -local_pos.dist_bottom;
 			}
 
 			local_pos.timestamp = t;
