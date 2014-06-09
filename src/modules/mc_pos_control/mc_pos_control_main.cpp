@@ -118,6 +118,7 @@ private:
 	int		_arming_sub;			/**< arming status of outputs */
 	int		_local_pos_sub;			/**< vehicle local position */
 	int		_pos_sp_triplet_sub;		/**< position setpoint triplet */
+	int 		_local_pos_sp_sub;		/**< offboard local position setpoint */
 
 	orb_advert_t	_att_sp_pub;			/**< attitude setpoint publication */
 	orb_advert_t	_local_pos_sp_pub;		/**< vehicle local position setpoint publication */
@@ -132,6 +133,7 @@ private:
 	struct position_setpoint_triplet_s		_pos_sp_triplet;	/**< vehicle global position setpoint triplet */
 	struct vehicle_local_position_setpoint_s	_local_pos_sp;		/**< vehicle local position setpoint */
 	struct vehicle_global_velocity_setpoint_s	_global_vel_sp;	/**< vehicle global velocity setpoint */
+		
 
 	struct {
 		param_t thr_min;
@@ -528,6 +530,7 @@ MulticopterPositionControl::task_main()
 	_arming_sub = orb_subscribe(ORB_ID(actuator_armed));
 	_local_pos_sub = orb_subscribe(ORB_ID(vehicle_local_position));
 	_pos_sp_triplet_sub = orb_subscribe(ORB_ID(position_setpoint_triplet));
+	_local_pos_sp_sub = orb_subscribe(ORB_ID(vehicle_local_position_setpoint));
 
 	parameters_update(true);
 
@@ -664,6 +667,28 @@ MulticopterPositionControl::task_main()
 					_pos_sp = _pos + pos_sp_offs.emult(_params.sp_offs_max);
 				}
 
+			} else if (_control_mode.flag_control_offboard_enabled) {
+				/* Offboard control */
+				bool updated;
+				orb_check(_local_pos_sp_sub, &updated);
+
+				if (updated) {
+					orb_copy(ORB_ID(vehicle_local_position_setpoint), _local_pos_sp_sub,
+					         &_local_pos_sp);
+				}
+
+				/* Make sure position control is selected i.e. not only velocity control */
+				if (_control_mode.flag_control_position_enabled) {
+				_pos_sp(0) = _local_pos_sp.x;
+				_pos_sp(1) = _local_pos_sp.y;
+				}
+
+				if (_control_mode.flag_control_altitude_enabled) {
+				_pos_sp(2) = _local_pos_sp.z;
+				}
+
+				_att_sp.yaw_body = _local_pos_sp.yaw;
+			
 			} else {
 				/* AUTO */
 				bool updated;
@@ -706,8 +731,14 @@ MulticopterPositionControl::task_main()
 			if (_local_pos_sp_pub > 0) {
 				orb_publish(ORB_ID(vehicle_local_position_setpoint), _local_pos_sp_pub, &_local_pos_sp);
 
-			} else {
+			} else if (!_control_mode.flag_control_offboard_enabled) {
 				_local_pos_sp_pub = orb_advertise(ORB_ID(vehicle_local_position_setpoint), &_local_pos_sp);
+			}
+
+			/* Close fd to let offboard pos sp be advertised in mavlink receiver*/
+			if (_control_mode.flag_control_offboard_enabled && _local_pos_sp_pub > 0) {
+				close(_local_pos_sp_pub);
+				_local_pos_sp_pub = -1;
 			}
 
 			if (!_control_mode.flag_control_manual_enabled && _pos_sp_triplet.current.valid && _pos_sp_triplet.current.type == SETPOINT_TYPE_IDLE) {
@@ -1040,6 +1071,12 @@ MulticopterPositionControl::task_main()
 			_reset_pos_sp = true;
 			reset_int_z = true;
 			reset_int_xy = true;
+
+			/* Close att_sp pub to allow offboard mode or att controller to advertise */
+			if (_att_sp_pub > 0) {
+				close(_att_sp_pub);
+				_att_sp_pub = -1;
+			}
 		}
 
 		/* reset altitude controller integral (hovering throttle) to manual throttle after manual throttle control */
