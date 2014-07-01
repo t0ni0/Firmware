@@ -234,6 +234,7 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 	int baro_init_cnt = 0;
 	int baro_init_num = 200;
 	float baro_offset = 0.0f;		// baro offset for reference altitude, initialized on start, then adjusted
+	float baro_avg = 0.0f;			// baro average reading
 	float surface_offset = 0.0f;	// ground level offset from reference altitude
 	float surface_offset_rate = 0.0f;	// surface offset change rate
 	float alt_avg = 0.0f;
@@ -458,9 +459,14 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 					accel_updates++;
 				}
 
+				if (baro_updates == 0) {
+					baro_avg = baro_offset;
+				}
+
 				if (sensor.baro_timestamp != baro_timestamp) {
 					corr_baro = baro_offset - sensor.baro_alt_meter - z_est[0];
 					baro_timestamp = sensor.baro_timestamp;
+					baro_avg += (sensor.baro_alt_meter - baro_avg) * 0.05f;
 					baro_updates++;
 				}
 			}
@@ -931,6 +937,10 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 				landed = false;
 				landed_time = 0;
 			}
+
+			/* Reset baro offset and altitude while landed */
+			baro_offset = baro_avg;
+			z_est[0] = 0.0f; // TODO: add adjustable param for height of PX4 from ground
 
 		} else {
 			if (alt_disp2 < land_disp2 && thrust < params.land_thr) {
