@@ -802,7 +802,7 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 		/* baro offset correction */
 		if (use_sonar) {
 			/* Correct baro offset considering we are using sonar estimate */
-			float offs_corr = -corr_baro * params.w_z_sonar * dt;
+			float offs_corr = -corr_baro * params.w_z_baro * dt;
 			baro_offset += offs_corr;
 			corr_baro += offs_corr;
 		}
@@ -874,10 +874,11 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 		}
 
 		/* inertial filter correction for altitude */
-		inertial_filter_correct(corr_baro, dt, z_est, 0, params.w_z_baro * !use_sonar);
 
 		if (use_sonar) {
 			inertial_filter_correct(corr_sonar, dt, z_est, 0, params.w_z_sonar);
+		} else {
+			inertial_filter_correct(corr_baro, dt, z_est, 0, params.w_z_baro);
 		}
 
 		if (use_gps_z) {
