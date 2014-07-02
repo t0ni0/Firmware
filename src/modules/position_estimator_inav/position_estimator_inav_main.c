@@ -784,6 +784,9 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 				surface_offset_rate -= corr_sonar * 0.5f * params.w_z_sonar * params.w_z_sonar * dt;
 				surface_offset -= corr_sonar * params.w_z_sonar * dt;
 			}
+
+		} else if (use_sonar) {
+			surface_offset_rate = 0.0f;
 		}
 
 		float w_xy_gps_p = params.w_xy_gps_p * w_gps_xy;
