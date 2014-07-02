@@ -483,8 +483,8 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 
 				if (flow.ground_distance_m > 0.31f && flow.ground_distance_m < 4.0f && att.R[2][2] > 0.7 && flow.ground_distance_m != sonar_prev) {
 					sonar_time = t;
-					sonar_prev = flow.ground_distance_m;
-					corr_sonar = flow.ground_distance_m + surface_offset + z_est[0];
+					sonar_prev = flow.ground_distance_m + params.px4_z_off - params.flow_z_off;
+					corr_sonar = flow.ground_distance_m + surface_offset + z_est[0] + params.px4_z_off - params.flow_z_off;
 					corr_sonar_filtered += (corr_sonar - corr_sonar_filtered) * params.sonar_filt;
 
 					if (fabsf(corr_sonar) > params.sonar_err) {
@@ -514,7 +514,7 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 				}
 
 				float flow_q = flow.quality / 255.0f;
-				float dist_bottom = - z_est[0] - surface_offset;
+				float dist_bottom = - z_est[0] - surface_offset - params.flow_z_off;
 
 				if (dist_bottom > 0.3f && flow_q > params.flow_q_min && (t < sonar_valid_time + sonar_valid_timeout) && att.R[2][2] > 0.7) {
 					/* distance to surface */
@@ -775,7 +775,7 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 
 		bool dist_bottom_valid = (t < sonar_valid_time + sonar_valid_timeout);
 
-		if (dist_bottom_valid) {
+		if (dist_bottom_valid && !use_sonar) { // Correct surface offset when using only baro for altitude correction
 			/* surface distance prediction */
 			surface_offset += surface_offset_rate * dt;
 
