@@ -763,6 +763,8 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 		bool use_gps_z = ref_inited && gps_valid && params.w_z_gps_p > MIN_VALID_W;
 		/* use flow if it's valid and (accurate or no GPS available) */
 		bool use_flow = flow_valid && (flow_accurate || !use_gps_xy);
+		/* use sonar for altitude if it has reached the minimum usable height */
+		bool use_sonar = sonar_valid && (-z_est[0] >= params.sonar_zmin);
 
 		/* try to estimate position during some time after position sources lost */
 		if (use_gps_xy || use_flow) {
@@ -795,6 +797,13 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 		}
 
 		/* baro offset correction */
+		if (use_sonar) {
+			/* Correct baro offset using sonar distance from bottom */
+			float offs_corr = -(z_est[0] + corr_baro + dist_bottom + params.px4_z_off - params.flow_z_off) * params.w_z_sonar * dt;
+			baro_offset += offs_corr;
+			corr_baro += offs_corr;
+		}
+
 		if (use_gps_z) {
 			float offs_corr = corr_gps[2][0] * w_z_gps_p * dt;
 			baro_offset += offs_corr;
@@ -862,7 +871,11 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 		}
 
 		/* inertial filter correction for altitude */
-		inertial_filter_correct(corr_baro, dt, z_est, 0, params.w_z_baro);
+		inertial_filter_correct(corr_baro, dt, z_est, 0, params.w_z_baro * !use_sonar);
+
+		if (use_sonar) {
+			inertial_filter_correct(corr_sonar, dt, z_est, 0, params.w_z_sonar);
+		}
 
 		if (use_gps_z) {
 			epv = fminf(epv, gps.epv_m);
