@@ -229,7 +229,7 @@ private:
 	math::Matrix<3, 3>	_board_rotation;		/**< rotation matrix for the orientation that the board is mounted */
 	math::Matrix<3, 3>	_external_mag_rotation;		/**< rotation matrix for the orientation that an external mag is mounted */
 	bool		_mag_is_external;		/**< true if the active mag is on an external board */
-
+	
 	uint64_t _battery_discharged;			/**< battery discharged current in mA*ms */
 	hrt_abstime _battery_current_timestamp;	/**< timestamp of last battery current reading */
 
@@ -252,6 +252,8 @@ private:
 
 		int board_rotation;
 		int external_mag_rotation;
+		
+		float board_offset[3];
 
 		int rc_map_roll;
 		int rc_map_pitch;
@@ -264,6 +266,7 @@ private:
 		int rc_map_posctl_sw;
 		int rc_map_loiter_sw;
 		int rc_map_acro_sw;
+		int rc_map_offboard_sw;
 
 		int rc_map_flaps;
 
@@ -280,12 +283,14 @@ private:
 		float rc_return_th;
 		float rc_loiter_th;
 		float rc_acro_th;
+		float rc_offboard_th;
 		bool rc_assist_inv;
 		bool rc_auto_inv;
 		bool rc_posctl_inv;
 		bool rc_return_inv;
 		bool rc_loiter_inv;
 		bool rc_acro_inv;
+		bool rc_offboard_inv;
 
 		float battery_voltage_scaling;
 		float battery_current_scaling;
@@ -319,6 +324,7 @@ private:
 		param_t rc_map_posctl_sw;
 		param_t rc_map_loiter_sw;
 		param_t rc_map_acro_sw;
+		param_t rc_map_offboard_sw;
 
 		param_t rc_map_flaps;
 
@@ -335,12 +341,15 @@ private:
 		param_t rc_return_th;
 		param_t rc_loiter_th;
 		param_t rc_acro_th;
+		param_t rc_offboard_th;
 
 		param_t battery_voltage_scaling;
 		param_t battery_current_scaling;
 
 		param_t board_rotation;
 		param_t external_mag_rotation;
+		
+		param_t board_offset[3];
 
 	}		_parameter_handles;		/**< handles for interesting parameters */
 
@@ -536,6 +545,7 @@ Sensors::Sensors() :
 	_parameter_handles.rc_map_posctl_sw = param_find("RC_MAP_POSCTL_SW");
 	_parameter_handles.rc_map_loiter_sw = param_find("RC_MAP_LOITER_SW");
 	_parameter_handles.rc_map_acro_sw = param_find("RC_MAP_ACRO_SW");
+	_parameter_handles.rc_map_offboard_sw = param_find("RC_MAP_OFFB_SW");
 
 	_parameter_handles.rc_map_aux1 = param_find("RC_MAP_AUX1");
 	_parameter_handles.rc_map_aux2 = param_find("RC_MAP_AUX2");
@@ -551,6 +561,7 @@ Sensors::Sensors() :
 	_parameter_handles.rc_return_th = param_find("RC_RETURN_TH");
 	_parameter_handles.rc_loiter_th = param_find("RC_LOITER_TH");
 	_parameter_handles.rc_acro_th = param_find("RC_ACRO_TH");
+	_parameter_handles.rc_offboard_th = param_find("RC_OFFB_TH");
 
 	/* gyro offsets */
 	_parameter_handles.gyro_offset[0] = param_find("SENS_GYRO_XOFF");
@@ -587,6 +598,11 @@ Sensors::Sensors() :
 	/* rotations */
 	_parameter_handles.board_rotation = param_find("SENS_BOARD_ROT");
 	_parameter_handles.external_mag_rotation = param_find("SENS_EXT_MAG_ROT");
+	
+	/* rotation offsets */
+	_parameter_handles.board_offset[0] = param_find("SENS_BOARD_X_OFF");
+	_parameter_handles.board_offset[1] = param_find("SENS_BOARD_Y_OFF");
+	_parameter_handles.board_offset[2] = param_find("SENS_BOARD_Z_OFF");
 
 	/* fetch initial parameter values */
 	parameters_update();
@@ -698,6 +714,10 @@ Sensors::parameters_update()
 		warnx("%s", paramerr);
 	}
 
+	if (param_get(_parameter_handles.rc_map_offboard_sw, &(_parameters.rc_map_offboard_sw)) != OK) {
+		warnx("%s", paramerr);
+	}
+
 	if (param_get(_parameter_handles.rc_map_flaps, &(_parameters.rc_map_flaps)) != OK) {
 		warnx("%s", paramerr);
 	}
@@ -726,6 +746,9 @@ Sensors::parameters_update()
 	param_get(_parameter_handles.rc_acro_th, &(_parameters.rc_acro_th));
 	_parameters.rc_acro_inv = (_parameters.rc_acro_th < 0);
 	_parameters.rc_acro_th = fabs(_parameters.rc_acro_th);
+	param_get(_parameter_handles.rc_offboard_th, &(_parameters.rc_offboard_th));
+	_parameters.rc_offboard_inv = (_parameters.rc_offboard_th < 0);
+	_parameters.rc_offboard_th = fabs(_parameters.rc_offboard_th);
 
 	/* update RC function mappings */
 	_rc.function[THROTTLE] = _parameters.rc_map_throttle - 1;
@@ -738,6 +761,7 @@ Sensors::parameters_update()
 	_rc.function[POSCTL] = _parameters.rc_map_posctl_sw - 1;
 	_rc.function[LOITER] = _parameters.rc_map_loiter_sw - 1;
 	_rc.function[ACRO] = _parameters.rc_map_acro_sw - 1;
+	_rc.function[OFFBOARD] = _parameters.rc_map_offboard_sw - 1;
 
 	_rc.function[FLAPS] = _parameters.rc_map_flaps - 1;
 
@@ -791,6 +815,18 @@ Sensors::parameters_update()
 
 	get_rot_matrix((enum Rotation)_parameters.board_rotation, &_board_rotation);
 	get_rot_matrix((enum Rotation)_parameters.external_mag_rotation, &_external_mag_rotation);
+	
+	param_get(_parameter_handles.board_offset[0], &(_parameters.board_offset[0]));
+	param_get(_parameter_handles.board_offset[1], &(_parameters.board_offset[1]));
+	param_get(_parameter_handles.board_offset[2], &(_parameters.board_offset[2]));
+	
+	/** fine tune board offset on parameter update **/
+	math::Matrix<3, 3> board_rotation_offset; 
+	board_rotation_offset.from_euler( M_DEG_TO_RAD_F * _parameters.board_offset[0],
+							 M_DEG_TO_RAD_F * _parameters.board_offset[1],
+							 M_DEG_TO_RAD_F * _parameters.board_offset[2]);
+	
+	_board_rotation = _board_rotation * board_rotation_offset;
 
 	return OK;
 }
@@ -1524,6 +1560,7 @@ Sensors::rc_poll()
 			manual.return_switch = get_rc_sw2pos_position(RETURN, _parameters.rc_return_th, _parameters.rc_return_inv);
 			manual.loiter_switch = get_rc_sw2pos_position(LOITER, _parameters.rc_loiter_th, _parameters.rc_loiter_inv);
 			manual.acro_switch = get_rc_sw2pos_position(ACRO, _parameters.rc_acro_th, _parameters.rc_acro_inv);
+			manual.offboard_switch = get_rc_sw2pos_position(OFFBOARD, _parameters.rc_offboard_th, _parameters.rc_offboard_inv);
 
 			/* publish manual_control_setpoint topic */
 			if (_manual_control_pub > 0) {
