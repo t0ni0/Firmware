@@ -801,8 +801,8 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 
 		/* baro offset correction */
 		if (use_sonar) {
-			/* Correct baro offset using sonar distance from bottom */
-			float offs_corr = -(z_est[0] + corr_baro + dist_bottom + params.px4_z_off - params.flow_z_off) * params.w_z_sonar * dt;
+			/* Correct baro offset considering we are using sonar estimate */
+			float offs_corr = -corr_baro * params.w_z_sonar * dt;
 			baro_offset += offs_corr;
 			corr_baro += offs_corr;
 		}
