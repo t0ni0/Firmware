@@ -953,7 +953,7 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 
 			/* Reset baro offset and altitude while landed */
 			baro_offset = baro_avg;
-			z_est[0] = 0.0f; // TODO: add adjustable param for height of PX4 from ground
+			z_est[0] = params.px4_z_off;
 			surface_offset = 0.0f;
 
 		} else {
