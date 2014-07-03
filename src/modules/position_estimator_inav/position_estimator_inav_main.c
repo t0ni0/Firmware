@@ -511,10 +511,6 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 						sonar_valid_time = t;
 						sonar_valid = true;
 					}
-				} else if (flow.ground_distance_m == sonar_prev) {
-					/* Readjust sonar correction even if we have no new readings */
-					corr_sonar = -(flow.ground_distance_m + surface_offset + z_est[0] + params.px4_z_off - params.flow_z_off);
-					sonar_valid = true;
 				}
 
 				float flow_q = flow.quality / 255.0f;
@@ -791,6 +787,7 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 			}
 
 		} else if (use_sonar) {
+			surface_offset = 0.0f;
 			surface_offset_rate = 0.0f;
 		}
 
@@ -961,8 +958,7 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 			}
 
 			/* Reset baro offset and altitude while landed */
-			baro_offset = baro_avg;
-			z_est[0] = params.px4_z_off;
+			baro_offset = baro_avg - params.px4_z_off;
 			z_est[1] = 0.0f;
 			surface_offset = 0.0f;
 			surface_offset_rate = 0.0f;
