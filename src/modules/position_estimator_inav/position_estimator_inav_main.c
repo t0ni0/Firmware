@@ -483,7 +483,7 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 
 				if (flow.ground_distance_m > 0.31f && flow.ground_distance_m < 4.0f && att.R[2][2] > 0.7 && flow.ground_distance_m != sonar_prev) {
 					sonar_time = t;
-					sonar_prev = flow.ground_distance_m + params.px4_z_off - params.flow_z_off;
+					sonar_prev = flow.ground_distance_m;
 					corr_sonar = flow.ground_distance_m + surface_offset + z_est[0] + params.px4_z_off - params.flow_z_off;
 					corr_sonar_filtered += (corr_sonar - corr_sonar_filtered) * params.sonar_filt;
 
@@ -511,6 +511,10 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 						sonar_valid_time = t;
 						sonar_valid = true;
 					}
+				} else if (flow.ground_distance_m == sonar_prev) {
+					/* Readjust sonar correction even if we have no new readings */
+					corr_sonar = flow.ground_distance_m + surface_offset + z_est[0] + params.px4_z_off - params.flow_z_off;
+					sonar_valid = true;
 				}
 
 				float flow_q = flow.quality / 255.0f;
@@ -729,6 +733,7 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 		if ((flow_valid || sonar_valid) && t > flow.timestamp + flow_topic_timeout) {
 			flow_valid = false;
 			sonar_valid = false;
+			corr_sonar = 0.0f;
 			warnx("FLOW timeout");
 			mavlink_log_info(mavlink_fd, "[inav] FLOW timeout");
 		}
