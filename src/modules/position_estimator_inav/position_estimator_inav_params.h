@@ -59,7 +59,6 @@ struct position_estimator_inav_params {
 	float land_disp;
 	float land_thr;
 	float delay_gps;
-	float px4_z_off;
 };
 
 struct position_estimator_inav_param_handles {
@@ -81,7 +80,6 @@ struct position_estimator_inav_param_handles {
 	param_t land_disp;
 	param_t land_thr;
 	param_t delay_gps;
-	param_t px4_z_off;
 };
 
 /**

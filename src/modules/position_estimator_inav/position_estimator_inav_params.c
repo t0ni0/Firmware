@@ -50,7 +50,7 @@ PARAM_DEFINE_FLOAT(INAV_W_GPS_FLOW, 0.1f);
 PARAM_DEFINE_FLOAT(INAV_W_ACC_BIAS, 0.05f);
 PARAM_DEFINE_FLOAT(INAV_FLOW_K, 0.15f);
 PARAM_DEFINE_FLOAT(INAV_FLOW_Q_MIN, 0.5f);
-PARAM_DEFINE_FLOAT(INAV_FLOW_Z_OFF, 0.2f);
+PARAM_DEFINE_FLOAT(INAV_FLOW_Z_OFF, 0.0f);
 PARAM_DEFINE_FLOAT(INAV_SONAR_FILT, 0.05f);
 PARAM_DEFINE_FLOAT(INAV_SONAR_ERR, 0.5f);
 PARAM_DEFINE_FLOAT(INAV_SONAR_ZMIN, 0.5f);
@@ -58,7 +58,6 @@ PARAM_DEFINE_FLOAT(INAV_LAND_T, 3.0f);
 PARAM_DEFINE_FLOAT(INAV_LAND_DISP, 0.7f);
 PARAM_DEFINE_FLOAT(INAV_LAND_THR, 0.2f);
 PARAM_DEFINE_FLOAT(INAV_DELAY_GPS, 0.2f);
-PARAM_DEFINE_FLOAT(INAV_PX4_Z_OFF, 0.2f);
 
 int parameters_init(struct position_estimator_inav_param_handles *h)
 {
@@ -80,7 +79,6 @@ int parameters_init(struct position_estimator_inav_param_handles *h)
 	h->land_disp = param_find("INAV_LAND_DISP");
 	h->land_thr = param_find("INAV_LAND_THR");
 	h->delay_gps = param_find("INAV_DELAY_GPS");
-	h->px4_z_off = param_find("INAV_PX4_Z_OFF");
 
 	return OK;
 }
@@ -105,7 +103,6 @@ int parameters_update(const struct position_estimator_inav_param_handles *h, str
 	param_get(h->land_disp, &(p->land_disp));
 	param_get(h->land_thr, &(p->land_thr));
 	param_get(h->delay_gps, &(p->delay_gps));
-	param_get(h->px4_z_off, &(p->px4_z_off));
 
 	return OK;
 }
