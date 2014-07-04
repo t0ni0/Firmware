@@ -511,6 +511,8 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 						/* correction is ok, use it */
 						sonar_valid_time = t;
 						sonar_valid = true;
+
+						/* Calculate average sonar reading to assure minimum usable height is reached */
 						sonar_avg += (flow.ground_distance_m - sonar_avg) * 0.1f;
 					}
 				}
@@ -776,7 +778,8 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 
 		bool dist_bottom_valid = (t < sonar_valid_time + sonar_valid_timeout);
 
-		if (dist_bottom_valid && !use_sonar) { // Correct surface offset when using only baro for altitude correction
+		/* Correct surface offset when using only baro for altitude correction */
+		if (dist_bottom_valid && !use_sonar) {
 			/* surface distance prediction */
 			surface_offset += surface_offset_rate * dt;
 
@@ -787,6 +790,8 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 			}
 
 		} else if (use_sonar) {
+			/* Reset surface offset when using sonar */
+			/* Dist from bottom should be the same as the altitude estimate */
 			surface_offset = 0.0f;
 			surface_offset_rate = 0.0f;
 		}
@@ -874,10 +879,12 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 		}
 
 		/* inertial filter correction for altitude */
-
 		if (use_sonar) {
+			/* prioritize sonar over baro for altitude when it is available */
 			inertial_filter_correct(corr_sonar, dt, z_est, 0, params.w_z_sonar);
+
 		} else {
+
 			inertial_filter_correct(corr_baro, dt, z_est, 0, params.w_z_baro);
 		}
 
@@ -955,7 +962,7 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 				landed_time = 0;
 			}
 
-			/* Reset baro offset and altitude while landed */
+			/* Reset baro offset and surface offset */
 			baro_offset = baro_avg;
 			surface_offset = 0.0f;
 			surface_offset_rate = 0.0f;
