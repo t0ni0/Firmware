@@ -235,7 +235,8 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 	int baro_init_num = 200;
 	float baro_offset = 0.0f;		// baro offset for reference altitude, initialized on start, then adjusted
 	float baro_avg = 0.0f;			// baro average reading
-	float surface_offset = 0.0f;	// ground level offset from reference altitude
+	float sonar_avg = 0.0f;			// flow distance average reading
+	float surface_offset = 0.0f;		// ground level offset from reference altitude
 	float surface_offset_rate = 0.0f;	// surface offset change rate
 	float alt_avg = 0.0f;
 	bool landed = true;
@@ -510,6 +511,7 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 						/* correction is ok, use it */
 						sonar_valid_time = t;
 						sonar_valid = true;
+						sonar_avg += (flow.ground_distance_m - sonar_avg) * 0.1f;
 					}
 				}
 
@@ -728,8 +730,6 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 		/* check for timeout on FLOW topic */
 		if ((flow_valid || sonar_valid) && t > flow.timestamp + flow_topic_timeout) {
 			flow_valid = false;
-			sonar_valid = false;
-			corr_sonar = 0.0f;
 			warnx("FLOW timeout");
 			mavlink_log_info(mavlink_fd, "[inav] FLOW timeout");
 		}
@@ -765,7 +765,7 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 		/* use flow if it's valid and (accurate or no GPS available) */
 		bool use_flow = flow_valid && (flow_accurate || !use_gps_xy);
 		/* use sonar for altitude if it has reached the minimum usable height */
-		bool use_sonar = sonar_valid && (-z_est[0] >= params.sonar_zmin);
+		bool use_sonar = sonar_valid && (sonar_avg >= params.sonar_zmin);
 
 		/* try to estimate position during some time after position sources lost */
 		if (use_gps_xy || use_flow) {
@@ -802,11 +802,9 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 		}
 
 		/* baro offset correction */
-		if (use_sonar) {
+		if (use_sonar && !landed) {
 			/* Correct baro offset considering we are using sonar estimate */
-			float offs_corr = -corr_baro * params.w_z_baro * dt;
-			baro_offset += offs_corr;
-			corr_baro += offs_corr;
+			baro_offset = baro_avg + z_est[0];
 		}
 
 		if (use_gps_z) {
@@ -959,7 +957,6 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 
 			/* Reset baro offset and altitude while landed */
 			baro_offset = baro_avg - params.px4_z_off;
-			z_est[1] = 0.0f;
 			surface_offset = 0.0f;
 			surface_offset_rate = 0.0f;
 
