@@ -372,6 +372,7 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 					} else {
 						wait_baro = false;
 						baro_offset /= (float) baro_init_cnt;
+						baro_avg = baro_offset;
 						warnx("baro offs: %.2f", baro_offset);
 						mavlink_log_info(mavlink_fd, "[inav] baro offs: %.2f", baro_offset);
 						local_pos.z_valid = true;
@@ -458,10 +459,6 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 
 					accel_timestamp = sensor.accelerometer_timestamp;
 					accel_updates++;
-				}
-
-				if (baro_updates == 0) {
-					baro_avg = baro_offset;
 				}
 
 				if (sensor.baro_timestamp != baro_timestamp) {
