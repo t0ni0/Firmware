@@ -43,6 +43,8 @@
 #include <poll.h>
 #include <uORB/uORB.h>
 #include <uORB/topics/optical_flow.h>
+#include <uORB/topics/actuator_outputs.h>
+#include <drivers/drv_hrt.h>
 
 __EXPORT int flow_led_main(int argc, char *argv[]);
 
@@ -59,7 +61,7 @@ int flow_led_main(int argc, char *argv[])
 	int flow_sub = orb_subscribe(ORB_ID(optical_flow));
 
 	/* Advertise on actuators topic */
-	orb_advert_t actuators_pub = orb_advertise(ORB_ID(actuator_outputs), &actuators);
+	orb_advert_t actuators_pub = orb_advertise(ORB_ID(actuator_outputs_1), &actuators);
 
 	struct pollfd fds[] = {
 		{ .fd = flow_sub,   .events = POLLIN }
@@ -70,10 +72,17 @@ int flow_led_main(int argc, char *argv[])
 	float sonar = 0.0f;
 	float sonar_avg = 0.0f;
 	float led_out = 0.0f;
+	hrt_abstime t_prev = 0;
+	char down = 0;
 
 	while (1) {
-		/* wait for update for 1000 ms */
-		int poll_result = poll(fds, 1, 1000);
+		/* wait for update for 500 ms */
+		int poll_result = poll(fds, 1, 500);
+		hrt_abstime t = hrt_absolute_time();
+
+		float dt = t_prev > 0 ? (t - t_prev) / 1000000.0f : 0.0f;
+		dt = fmaxf(fminf(0.5, dt), 0.05);		// Constrain dt from 2 to 500 ms
+		t_prev = t;
  
 		if (poll_result == 0) {
 			/* No new flow data */
@@ -96,9 +105,37 @@ int flow_led_main(int argc, char *argv[])
 				orb_copy(ORB_ID(optical_flow), flow_sub, &flow);
 				flow_q = flow.quality;
 				sonar = flow.ground_distance_m;
-
 			}
 		}
+
+		/* Update LED output PWM value */
+		/* TEMP: Gradually blink LED */
+		if (!down && led_out == 1.0f){
+			down = 1;
+		} else if (down && led_out == 0.0f) {
+			down = 0;
+		}
+
+		if (!down && led_out < 1.0f) {
+			led_out += (1 - led_out) * dt * 0.5f;
+		} else if (down && led_out > 0.0f) {
+			led_out += - led_out * dt * 0.5f;
+		}
+
+		/* Limit LED output */
+		if (led_out <= 1.0f){
+			led_out = 1.0f;
+		} else if (led_out <= 0.0f) {
+			led_out = 0.0f;
+		}
+
+		/* Copy controls and timestamp to struct */
+		actuators.control = led_out;
+		actuators.timestamp = t;
+
+		/* Publish PWM output */
+		orb_publish(ORB_ID(actuator_outputs_1), actuators_pub, &actuators);
+
 	}
 
 	return 0;
