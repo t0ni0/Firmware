@@ -208,11 +208,12 @@ int flow_led_thread_main(int argc, char *argv[]) {
 
 		/* Update LED output PWM value */
 		/* TEMP: Blink LED */
-		if (led_out < 0.5f && !(loop_counter % 10)){
+		if (led_out < 0.5f && (loop_counter % 10 == 0)){
 			led_out = 1.0f;
 			mavlink_log_info(mavlink_fd, "Led output: %.2f", led_out)
-		} else if (led_out < 0.5f && !(loop_counter % 10)) {
+		} else if (led_out > 0.5f && (loop_counter % 10 == 0)) {
 			led_out = 0.0f;
+			mavlink_log_info(mavlink_fd, "Led output: %.2f", led_out)
 		}
 
 		/* Limit LED output */
