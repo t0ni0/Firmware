@@ -210,9 +210,9 @@ int flow_led_thread_main(int argc, char *argv[])
 		}
 
 		/* Limit LED output */
-		if (led_out <= 1.0f){
+		if (led_out > 1.0f){
 			led_out = 1.0f;
-		} else if (led_out <= 0.0f) {
+		} else if (led_out < 0.0f) {
 			led_out = 0.0f;
 		}
 
