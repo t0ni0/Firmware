@@ -60,10 +60,24 @@
 
 __EXPORT int flow_led_main(int argc, char *argv[]);
 
+int flow_led_thread_main(int argc, char *argv[]);
+
+static void usage(const char *reason);
+
 static bool thread_should_exit = false; /**< Deamon exit flag */
 static bool thread_running = false; /**< Deamon status flag */
 static int flow_led_task; /**< Handle of deamon task / thread */
 static bool verbose_mode = false;
+
+static void usage(const char *reason)
+{
+	if (reason) {
+		fprintf(stderr, "%s\n", reason);
+	}
+
+	fprintf(stderr, "usage: flow_led {start|stop|status} [-v]\n\n");
+	exit(1);
+}
 
 int flow_led_main(int argc, char *argv[])
 {
