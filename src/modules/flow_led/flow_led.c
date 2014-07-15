@@ -171,13 +171,13 @@ int flow_led_thread_main(int argc, char *argv[]) {
 
 	while (!thread_should_exit) {
 
-		/* Wait for update for 500 ms */
-		int poll_result = poll(fds, 1, 500);
+		/* Wait for update for 1000 ms */
+		int poll_result = poll(fds, 1, 1000);
 		hrt_abstime t = hrt_absolute_time();
 
 		/* Calculate time difference since last iteration of loop */
 		float dt = t_prev > 0 ? (t - t_prev) / 1000000.0f : 0.0f;
-		dt = fmaxf(fminf(0.5, dt), 0.05);		// Constrain dt from 2 to 500 ms
+		dt = fmaxf(fminf(0.05, dt), 0.005);		// Constrain dt from 5 to 50 ms
 		t_prev = t;
  
 		if (poll_result == 0) {
@@ -208,10 +208,10 @@ int flow_led_thread_main(int argc, char *argv[]) {
 
 		/* Update LED output PWM value */
 		/* TEMP: Blink LED */
-		if (led_out < 0.5f && (loop_counter % 10 == 0)){
+		if (led_out < 0.5f && (loop_counter % 2 == 0)){
 			led_out = 1.0f;
 			mavlink_log_info(mavlink_fd, "Led output: %.2f", led_out)
-		} else if (led_out > 0.5f && (loop_counter % 10 == 0)) {
+		} else if (led_out > 0.5f && (loop_counter % 2 == 0)) {
 			led_out = 0.0f;
 			mavlink_log_info(mavlink_fd, "Led output: %.2f", led_out)
 		}
