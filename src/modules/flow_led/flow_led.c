@@ -37,20 +37,92 @@
  * PX4Flow assistive LED lighting control.
  */
  
-#include <nuttx/config.h>
+#include <unistd.h>
+#include <stdlib.h>
 #include <stdio.h>
+#include <stdbool.h>
+#include <fcntl.h>
 #include <string.h>
+#include <nuttx/config.h>
+#include <nuttx/sched.h>
+#include <sys/prctl.h>
+#include <termios.h>
 #include <errno.h>
+#include <math.h>
 #include <poll.h>
 #include <uORB/uORB.h>
 #include <uORB/topics/optical_flow.h>
 #include <uORB/topics/actuator_controls.h>
+#include <mavlink/mavlink_log.h>
+#include <systemlib/systemlib.h>
+#include <systemlib/err.h>
 #include <drivers/drv_hrt.h>
 
 __EXPORT int flow_led_main(int argc, char *argv[]);
 
+static bool thread_should_exit = false; /**< Deamon exit flag */
+static bool thread_running = false; /**< Deamon status flag */
+static int flow_led_task; /**< Handle of deamon task / thread */
+static bool verbose_mode = false;
+
 int flow_led_main(int argc, char *argv[])
 {
+	if (argc < 1) {
+		usage("missing command");
+	}
+
+	if (!strcmp(argv[1], "start")) {
+		if (thread_running) {
+			warnx("already running");
+			/* this is not an error */
+			exit(0);
+		}
+
+		verbose_mode = false;
+
+		if (argc > 1)
+			if (!strcmp(argv[2], "-v")) {
+				verbose_mode = true;
+			}
+
+		thread_should_exit = false;
+		flow_led_task = task_spawn_cmd("flow_led",
+					       SCHED_DEFAULT, SCHED_PRIORITY_MAX - 50, 5000,
+					       flow_led_thread_main,
+					       (argv) ? (const char **) &argv[2] : (const char **) NULL);
+		exit(0);
+	}
+
+	if (!strcmp(argv[1], "stop")) {
+		if (thread_running) {
+			warnx("stop");
+			thread_should_exit = true;
+
+		} else {
+			warnx("app not started");
+		}
+
+		exit(0);
+	}
+
+	if (!strcmp(argv[1], "status")) {
+		if (thread_running) {
+			warnx("app is running");
+
+		} else {
+			warnx("app not started");
+		}
+
+		exit(0);
+	}
+
+	usage("unrecognized command");
+	exit(1);
+}
+
+int flow_led_thread_main(int argc, char *argv[])
+{
+	thread_running = true;
 	/* Initialize structs */
 	struct optical_flow_s flow;
 	memset(&flow, 0, sizeof(flow));
@@ -74,9 +146,9 @@ int flow_led_main(int argc, char *argv[])
 	float sonar_avg = 0.0f;
 	float led_out = 0.0f;
 	hrt_abstime t_prev = 0;
-	char down = 0;
+	char go_down = 0;
 
-	while (1) {
+	while (!thread_should_exit) {
 		/* wait for update for 500 ms */
 		int poll_result = poll(fds, 1, 500);
 		hrt_abstime t = hrt_absolute_time();
@@ -111,15 +183,15 @@ int flow_led_main(int argc, char *argv[])
 
 		/* Update LED output PWM value */
 		/* TEMP: Gradually blink LED */
-		if (!down && led_out == 1.0f){
-			down = 1;
-		} else if (down && led_out == 0.0f) {
-			down = 0;
+		if (!go_down && led_out == 1.0f){
+			go_down = 1;
+		} else if (go_down && led_out == 0.0f) {
+			go_down = 0;
 		}
 
-		if (!down && led_out < 1.0f) {
+		if (!go_down && led_out < 1.0f) {
 			led_out += (1 - led_out) * dt * 0.5f;
-		} else if (down && led_out > 0.0f) {
+		} else if (go_down && led_out > 0.0f) {
 			led_out += - led_out * dt * 0.5f;
 		}
 
@@ -138,6 +210,7 @@ int flow_led_main(int argc, char *argv[])
 		orb_publish(ORB_ID(actuator_controls_1), actuators_pub, &actuators);
 
 	}
-
+	warnx("stopped");
+	thread_running = false;
 	return 0;
 }
