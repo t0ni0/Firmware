@@ -134,13 +134,13 @@ int flow_led_main(int argc, char *argv[])
 	exit(1);
 }
 
-int flow_led_thread_main(int argc, char *argv[])
-{
+int flow_led_thread_main(int argc, char *argv[]) {
+
 	thread_running = true;
+
 	/* Initialize structs */
 	struct optical_flow_s flow;
 	memset(&flow, 0, sizeof(flow));
-
 	struct actuator_controls_s actuators;
 	memset(&actuators, 0, sizeof(actuators));
 
@@ -150,30 +150,39 @@ int flow_led_thread_main(int argc, char *argv[])
 	/* Advertise on actuators topic */
 	orb_advert_t actuators_pub = orb_advertise(ORB_ID(actuator_controls_1), &actuators);
 
+	/* Initialize MAVLink fd for output to QGC */
+	int mavlink_fd;
+	mavlink_fd = open(MAVLINK_LOG_DEVICE, 0);
+	// mavlink_log_info(mavlink_fd, "[inav] started");
+
+	/* Polling fds */
 	struct pollfd fds[] = {
 		{ .fd = flow_sub,   .events = POLLIN }
 	};
 
+	/* Variable initializations */
 	int error_counter = 0;
+	int loop_counter = 0;
 	int flow_q = 0;
 	float sonar = 0.0f;
 	float sonar_avg = 0.0f;
 	float led_out = 0.0f;
 	hrt_abstime t_prev = 0;
-	char go_down = 0;
 
 	while (!thread_should_exit) {
-		/* wait for update for 500 ms */
+
+		/* Wait for update for 500 ms */
 		int poll_result = poll(fds, 1, 500);
 		hrt_abstime t = hrt_absolute_time();
 
+		/* Calculate time difference since last iteration of loop */
 		float dt = t_prev > 0 ? (t - t_prev) / 1000000.0f : 0.0f;
 		dt = fmaxf(fminf(0.5, dt), 0.05);		// Constrain dt from 2 to 500 ms
 		t_prev = t;
  
 		if (poll_result == 0) {
 			/* No new flow data */
-			// printf("[flow_led] Got no data within a second\n");
+			// printf("[flow_led] Got no data within 500ms \n");
 
 		} else if (poll_result < 0) {
 			/* ERROR */
@@ -192,21 +201,18 @@ int flow_led_thread_main(int argc, char *argv[])
 				orb_copy(ORB_ID(optical_flow), flow_sub, &flow);
 				flow_q = flow.quality;
 				sonar = flow.ground_distance_m;
+
+				// TODO: Update led_out with respect to flow quality and sonar height
 			}
 		}
 
 		/* Update LED output PWM value */
-		/* TEMP: Gradually blink LED */
-		if (!go_down && led_out == 1.0f){
-			go_down = 1;
-		} else if (go_down && led_out == 0.0f) {
-			go_down = 0;
-		}
-
-		if (!go_down && led_out < 1.0f) {
-			led_out += (1 - led_out) * dt * 0.5f;
-		} else if (go_down && led_out > 0.0f) {
-			led_out += - led_out * dt * 0.5f;
+		/* TEMP: Blink LED */
+		if (led_out < 0.5f && !(loop_counter % 10)){
+			led_out = 1.0f;
+			mavlink_log_info(mavlink_fd, "Led output: %.2f", led_out)
+		} else if (led_out < 0.5f && !(loop_counter % 10)) {
+			led_out = 0.0f;
 		}
 
 		/* Limit LED output */
@@ -221,11 +227,9 @@ int flow_led_thread_main(int argc, char *argv[])
 		actuators.timestamp = t;
 
 		/* Publish PWM output */
-		if (actuators_pub < 0) {
-			actuators_pub = orb_advertise(ORB_ID(actuator_controls_1), &actuators);
-		} else {
-			orb_publish(ORB_ID(actuator_controls_1), actuators_pub, &actuators);
-		}
+		orb_publish(ORB_ID(actuator_controls_1), actuators_pub, &actuators);
+
+		loop_counter++;
 
 	}
 	warnx("stopped");
