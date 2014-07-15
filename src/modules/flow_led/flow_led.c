@@ -173,13 +173,13 @@ int flow_led_thread_main(int argc, char *argv[])
  
 		if (poll_result == 0) {
 			/* No new flow data */
-			printf("[flow_led] Got no data within a second\n");
+			// printf("[flow_led] Got no data within a second\n");
 
 		} else if (poll_result < 0) {
 			/* ERROR */
 			if (error_counter < 10 || error_counter % 50 == 0) {
 				/* Use error counter to prevent flooding */
-				printf("[flow_led] ERROR return value from poll(): %d\n", poll_result);
+				// printf("[flow_led] ERROR return value from poll(): %d\n", poll_result);
 			}
 			error_counter++;
 
@@ -221,7 +221,11 @@ int flow_led_thread_main(int argc, char *argv[])
 		actuators.timestamp = t;
 
 		/* Publish PWM output */
-		orb_publish(ORB_ID(actuator_controls_1), actuators_pub, &actuators);
+		if (actuators_pub < 0) {
+			actuators_pub = orb_advertise(ORB_ID(actuator_controls_1), &actuators);
+		} else {
+			orb_publish(ORB_ID(actuator_controls_1), actuators_pub, &actuators);
+		}
 
 	}
 	warnx("stopped");
