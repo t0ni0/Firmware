@@ -44,7 +44,7 @@
 #include <poll.h>
 #include <uORB/uORB.h>
 #include <uORB/topics/optical_flow.h>
-#include <uORB/topics/actuator_outputs.h>
+#include <uORB/topics/actuator_controls.h>
 #include <drivers/drv_hrt.h>
 
 __EXPORT int flow_led_main(int argc, char *argv[]);
@@ -62,7 +62,7 @@ int flow_led_main(int argc, char *argv[])
 	int flow_sub = orb_subscribe(ORB_ID(optical_flow));
 
 	/* Advertise on actuators topic */
-	orb_advert_t actuators_pub = orb_advertise(ORB_ID(actuator_outputs_1), &actuators);
+	orb_advert_t actuators_pub = orb_advertise(ORB_ID(actuator_controls_1), &actuators);
 
 	struct pollfd fds[] = {
 		{ .fd = flow_sub,   .events = POLLIN }
@@ -131,11 +131,11 @@ int flow_led_main(int argc, char *argv[])
 		}
 
 		/* Copy controls and timestamp to struct */
-		actuators.control = led_out;
+		actuators.control[0] = led_out;
 		actuators.timestamp = t;
 
 		/* Publish PWM output */
-		orb_publish(ORB_ID(actuator_outputs_1), actuators_pub, &actuators);
+		orb_publish(ORB_ID(actuator_controls_1), actuators_pub, &actuators);
 
 	}
 
