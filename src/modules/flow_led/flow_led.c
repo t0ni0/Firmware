@@ -39,6 +39,7 @@
  
 #include <nuttx/config.h>
 #include <stdio.h>
+#include <string.h>
 #include <errno.h>
 #include <poll.h>
 #include <uORB/uORB.h>
