@@ -57,6 +57,9 @@
 #include <systemlib/systemlib.h>
 #include <systemlib/err.h>
 #include <drivers/drv_hrt.h>
+// TODO: Include parameters for:
+//			PID controller
+//			Flow Q setpoint
 
 __EXPORT int flow_led_main(int argc, char *argv[]);
 
@@ -163,10 +166,13 @@ int flow_led_thread_main(int argc, char *argv[]) {
 	/* Variable initializations */
 	int error_counter = 0;
 	int loop_counter = 0;
-	int flow_q = 0;
-	float sonar = 0.0f;
-	float sonar_avg = 0.0f;
-	float led_out = 0.0f;
+	int flow_q = 0;				// Flow quality factor
+	int flow_q_err = 0;			// Flow quality error from setpoint parameter
+	float sonar = 0.0f;			// Sonar height measurement
+	float sonar_avg = 0.0f;		// Sonar average height measurement
+	float led_out = 0.0f;		// LED output intensity (0.0 - 1.0)
+	float led_int = 0.0f;		// LED output integral
+	float led_err = 0.0f
 	hrt_abstime t_prev = 0;
 
 	while (!thread_should_exit) {
@@ -182,13 +188,16 @@ int flow_led_thread_main(int argc, char *argv[]) {
  
 		if (poll_result == 0) {
 			/* No new flow data */
-			// printf("[flow_led] Got no data within 500ms \n");
-
+			if (verbose_mode) {
+				printf("[flow_led] Got no data within a second. \n");
+			}
 		} else if (poll_result < 0) {
 			/* ERROR */
 			if (error_counter < 10 || error_counter % 50 == 0) {
 				/* Use error counter to prevent flooding */
-				// printf("[flow_led] ERROR return value from poll(): %d\n", poll_result);
+				if (verbose_mode) {
+					printf("[flow_led] ERROR return value from poll(): %d\n", poll_result);
+				}
 			}
 			error_counter++;
 
@@ -202,12 +211,15 @@ int flow_led_thread_main(int argc, char *argv[]) {
 				flow_q = flow.quality;
 				sonar = flow.ground_distance_m;
 
-				// TODO: Update led_out with respect to flow quality and sonar height
+				// TODO: Update flow quality error using setpoint parameter
+				flow_q_err = 240 - flow_q ;
+				led_err = flow_q_err / 255.0f;
+
 			}
 		}
 
-		/* Update LED output PWM value */
-		/* TEMP: Blink LED */
+		/*
+		// TEMP: Blink LED
 		if (led_out < 0.5f && (loop_counter % 2 == 0)){
 			led_out = 1.0f;
 			mavlink_log_info(mavlink_fd, "Led output: %.2f", led_out)
@@ -215,6 +227,14 @@ int flow_led_thread_main(int argc, char *argv[]) {
 			led_out = 0.0f;
 			mavlink_log_info(mavlink_fd, "Led output: %.2f", led_out)
 		}
+		*/
+
+		// TODO: Sonar average calculation
+
+		/* LED PID control */
+		// led_int += led_err * led_i * dt;
+		// led_out += led_err * led_p + (led_err_prev - led_err) * led_d / dt + led_int;
+		// led_err_prev = led_err;
 
 		/* Limit LED output */
 		if (led_out > 1.0f){
