@@ -67,7 +67,7 @@ __BEGIN_DECLS
 /**
  * Lowest minimum PWM in us
  */
-#define PWM_LOWEST_MIN 100
+#define PWM_LOWEST_MIN 1
 
 /**
  * Default minimum PWM in us

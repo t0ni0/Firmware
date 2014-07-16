@@ -192,6 +192,7 @@ int flow_led_thread_main(int argc, char *argv[]) {
 	float led_out = 0.0f;		// LED output intensity (0.0 - 1.0)
 	float led_int = 0.0f;		// LED output integral
 	float led_err = 0.0f;		// LED error calculated from flow Q error
+	float led_err_prev = 0.0f;	// LED previous error
 	float throttle = 0.0f;		// Current throttle stick position
 	hrt_abstime t_prev = 0;		// Absolute time of previous iteration of main loop
 
@@ -240,26 +241,28 @@ int flow_led_thread_main(int argc, char *argv[]) {
 				flow_q = flow.quality;
 				sonar = flow.ground_distance_m;
 
-				// TODO: Update flow quality error using setpoint parameter
-				flow_q_err = 240 - flow_q ;
+				/* Update flow quality error using setpoint parameter */
+				flow_q_err = params.flow_q_sp - flow_q ;
 				led_err = flow_q_err / 255.0f;
 
 				// TODO: Sonar average calculation
 
 				/* LED PID control */
-				// led_int += led_err * params.led_i * dt;
-				// led_out += led_err * params.led_p + (led_err_prev - led_err) * params.led_d / dt + led_int;
-				// led_err_prev = led_err;
+				led_int += led_err * params.led_i * dt;
+				led_out += led_err * params.led_p + (led_err_prev - led_err) * params.led_d / dt + led_int;
+				led_err_prev = led_err;
 
 			}
 
-			/* Poll manual setpoint for debugging purposes */
+			/*
+			// Poll manual setpoint for debugging purposes
 			if (fds[1].revents & POLLIN) {
 
 				orb_copy(ORB_ID(manual_control_setpoint), manual_sub, &manual);
 				throttle = manual.z;
 
 			}
+			*/
 		}
 
 		/*
@@ -273,8 +276,10 @@ int flow_led_thread_main(int argc, char *argv[]) {
 		}
 		*/
 
+		/*
 		// TEMP: Assign throttle stick to LED output
 		led_out = throttle;
+		*/
 
 		/* Limit LED output */
 		if (led_out > 1.0f){
