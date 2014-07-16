@@ -54,6 +54,7 @@
 #include <uORB/topics/optical_flow.h>
 #include <uORB/topics/actuator_controls.h>
 #include <uORB/topics/manual_control_setpoint.h>
+ #include <uORB/topics/parameter_update.h>
 #include <mavlink/mavlink_log.h>
 #include <systemlib/systemlib.h>
 #include <systemlib/err.h>
