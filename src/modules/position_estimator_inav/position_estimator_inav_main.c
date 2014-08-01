@@ -239,6 +239,7 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 	float surface_offset = 0.0f;		// ground level offset from reference altitude
 	float surface_offset_rate = 0.0f;	// surface offset change rate
 	float alt_avg = 0.0f;
+	float sonar_baro_ratio = 0.0f;		// sonar to baro ratio (sonar/baro)
 	bool landed = true;
 	hrt_abstime landed_time = 0;
 
@@ -876,14 +877,25 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 		}
 
 		/* inertial filter correction for altitude */
-		if (use_sonar) {
+		if (sonar_valid) {
 			/* prioritize sonar over baro for altitude when it is available */
-			inertial_filter_correct(corr_sonar, dt, z_est, 0, params.w_z_sonar);
+			if (sonar_avg < params.sonar_zmin) {
+				/* scale up sonar and scale down baro linearly while approaching optimal sonar height */
+				sonar_baro_ratio = (sonar_avg - 0.3f) / (params.sonar_zmin - 0.3f);
+
+			} else {
+
+				sonar_baro_ratio = 1.0f;
+			}
+
+			inertial_filter_correct(corr_sonar, dt, z_est, 0, params.w_z_sonar * sonar_baro_ratio);
 
 		} else {
 
-			inertial_filter_correct(corr_baro, dt, z_est, 0, params.w_z_baro);
+			sonar_baro_ratio = 0.0f;
 		}
+
+		inertial_filter_correct(corr_baro, dt, z_est, 0, params.w_z_baro * (1 - sonar_baro_ratio));
 
 		if (use_gps_z) {
 			epv = fminf(epv, gps.epv_m);
