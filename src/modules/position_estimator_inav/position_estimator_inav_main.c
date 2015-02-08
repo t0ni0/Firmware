@@ -256,7 +256,7 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 	float alt_avg = 0.0f;
 	float sonar_baro_ratio = 0.0f;		// sonar to baro ratio (sonar/baro)
 	bool landed = true;
-	hrt_abstime landed_time = 0;
+	//hrt_abstime landed_time = 0;
 
 	hrt_abstime accel_timestamp = 0;
 	hrt_abstime baro_timestamp = 0;
@@ -304,7 +304,7 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 	float w_flow = 0.0f;
 
 	float sonar_prev = 0.0f;
-	hrt_abstime flow_prev = 0;			// time of last flow measurement
+	//hrt_abstime flow_prev = 0;			// time of last flow measurement
 	hrt_abstime sonar_time = 0;			// time of last sonar measurement (not filtered)
 	hrt_abstime sonar_valid_time = 0;	// time of last sonar measurement used for correction (filtered)
 
@@ -1126,7 +1126,6 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 		if (landed) {
 			if (alt_disp2 > land_disp2 || thrust > params.land_thr) {
 				landed = false;
-				landed_time = 0;
 			}
 
 			/* Reset baro offset and surface offset */
