@@ -256,7 +256,7 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 	float alt_avg = 0.0f;
 	float sonar_baro_ratio = 0.0f;		// sonar to baro ratio (sonar/baro)
 	bool landed = true;
-	//hrt_abstime landed_time = 0;
+	hrt_abstime landed_time = 0;
 
 	hrt_abstime accel_timestamp = 0;
 	hrt_abstime baro_timestamp = 0;
@@ -1126,6 +1126,7 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 		if (landed) {
 			if (alt_disp2 > land_disp2 || thrust > params.land_thr) {
 				landed = false;
+				landed_time = 0;
 			}
 
 			/* Reset baro offset and surface offset */
