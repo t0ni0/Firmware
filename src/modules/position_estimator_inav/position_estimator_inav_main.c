@@ -1132,8 +1132,22 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 			baro_offset = baro_avg;
 			surface_offset = 0.0f;
 			surface_offset_rate = 0.0f;
-		}
+		} else {
+			if (alt_disp2 < land_disp2 && thrust < params.land_thr) {
+				if (landed_time == 0) {
+					landed_time = t;    // land detected first time
 
+				} else {
+					if (t > landed_time + params.land_t * 1000000.0f) {
+						landed = true;
+						landed_time = 0;
+					}
+				}
+
+			} else {
+				landed_time = 0;
+			}
+		}
 
 		if (verbose_mode) {
 			/* print updates rate */
