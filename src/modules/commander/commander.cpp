@@ -2166,9 +2166,10 @@ control_status_leds(vehicle_status_s *status_local, const actuator_armed_s *actu
 			} else if (status_local->battery_warning == vehicle_status_s::VEHICLE_BATTERY_WARNING_CRITICAL) {
 				rgbled_set_color(RGBLED_COLOR_RED);
 			} else {
-				if (status_local->condition_global_position_valid) {
-					rgbled_set_color(RGBLED_COLOR_GREEN);
-
+			    if (status_local->condition_global_position_valid) {
+			        rgbled_set_color(RGBLED_COLOR_GREEN);
+			    } else if (status_local->condition_local_position_valid) {
+					rgbled_set_color(RGBLED_COLOR_PURPLE);
 				} else {
 					rgbled_set_color(RGBLED_COLOR_BLUE);
 				}
