@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- *   Copyright (c) 2012-2014 PX4 Development Team. All rights reserved.
+ *   Copyright (c) 2012-2015 PX4 Development Team. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -89,11 +89,10 @@
 #endif
 static const int ERROR = -1;
 
-#define DEFAULT_DEVICE_NAME	"/dev/ttyS1"
-#define MAX_DATA_RATE	20000	// max data rate in bytes/s
-#define MAIN_LOOP_DELAY 10000	// 100 Hz @ 1000 bytes/s data rate
-
-#define TX_BUFFER_GAP MAVLINK_MAX_PACKET_LEN
+#define DEFAULT_DEVICE_NAME			"/dev/ttyS1"
+#define MAX_DATA_RATE				1000000	///< max data rate in bytes/s
+#define MAIN_LOOP_DELAY 			10000	///< 100 Hz @ 1000 bytes/s data rate
+#define FLOW_CONTROL_DISABLE_THRESHOLD		40	///< picked so that some messages still would fit it.
 
 static Mavlink *_mavlink_instances = nullptr;
 
@@ -132,6 +131,7 @@ Mavlink::Mavlink() :
 	_streams(nullptr),
 	_mission_manager(nullptr),
 	_parameters_manager(nullptr),
+	_mavlink_ftp(nullptr),
 	_mode(MAVLINK_MODE_NORMAL),
 	_channel(MAVLINK_COMM_0),
 	_logbuffer {},
@@ -249,7 +249,9 @@ Mavlink::~Mavlink()
 		} while (_task_running);
 	}
 
-	LL_DELETE(_mavlink_instances, this);
+	if (_mavlink_instances) {
+		LL_DELETE(_mavlink_instances, this);
+	}
 }
 
 void
@@ -487,6 +489,9 @@ void Mavlink::mavlink_update_system(void)
 		_param_system_type = param_find("MAV_TYPE");
 		_param_use_hil_gps = param_find("MAV_USEHILGPS");
 		_param_forward_externalsp = param_find("MAV_FWDEXTSP");
+
+		/* test param - needs to be referenced, but is unused */
+		(void)param_find("MAV_TEST_PAR");
 	}
 
 	/* update system and component id */
@@ -730,7 +735,7 @@ Mavlink::get_free_tx_buf()
 	int buf_free = 0;
 	(void) ioctl(_uart_fd, FIONWRITE, (unsigned long)&buf_free);
 
-	if (get_flow_control_enabled() && buf_free < TX_BUFFER_GAP) {
+	if (get_flow_control_enabled() && buf_free < FLOW_CONTROL_DISABLE_THRESHOLD) {
 		/* Disable hardware flow control:
 		 * if no successful write since a defined time
 		 * and if the last try was not the last successful write
@@ -747,7 +752,7 @@ Mavlink::get_free_tx_buf()
 }
 
 void
-Mavlink::send_message(const uint8_t msgid, const void *msg)
+Mavlink::send_message(const uint8_t msgid, const void *msg, uint8_t component_ID)
 {
 	/* If the wait until transmit flag is on, only transmit after we've received messages.
 	   Otherwise, transmit all the time. */
@@ -765,7 +770,7 @@ Mavlink::send_message(const uint8_t msgid, const void *msg)
 	_last_write_try_time = hrt_absolute_time();
 
 	/* check if there is space in the buffer, let it overflow else */
-	if ((buf_free < TX_BUFFER_GAP) || (buf_free < packet_len)) {
+	if (buf_free < packet_len) {
 		/* no enough space in buffer to send */
 		count_txerr();
 		count_txerrbytes(packet_len);
@@ -781,7 +786,7 @@ Mavlink::send_message(const uint8_t msgid, const void *msg)
 	/* use mavlink's internal counter for the TX seq */
 	buf[2] = mavlink_get_channel_status(_channel)->current_tx_seq++;
 	buf[3] = mavlink_system.sysid;
-	buf[4] = mavlink_system.compid;
+	buf[4] = (component_ID == 0) ? mavlink_system.compid : component_ID;
 	buf[5] = msgid;
 
 	/* payload */
@@ -829,7 +834,7 @@ Mavlink::resend_message(mavlink_message_t *msg)
 	unsigned packet_len = msg->len + MAVLINK_NUM_NON_PAYLOAD_BYTES;
 
 	/* check if there is space in the buffer, let it overflow else */
-	if ((buf_free < TX_BUFFER_GAP) || (buf_free < packet_len)) {
+	if (buf_free < packet_len) {
 		/* no enough space in buffer to send */
 		count_txerr();
 		count_txerrbytes(packet_len);
@@ -869,6 +874,9 @@ Mavlink::handle_message(const mavlink_message_t *msg)
 
 	/* handle packet with parameter component */
 	_parameters_manager->handle_message(msg);
+	
+	/* handle packet with ftp component */
+	_mavlink_ftp->handle_message(msg);
 
 	if (get_forwarding_on()) {
 		/* forward any messages to other mavlink instances */
@@ -982,7 +990,7 @@ void
 Mavlink::adjust_stream_rates(const float multiplier)
 {
 	/* do not allow to push us to zero */
-	if (multiplier < 0.01f) {
+	if (multiplier < 0.0005f) {
 		return;
 	}
 
@@ -993,9 +1001,9 @@ Mavlink::adjust_stream_rates(const float multiplier)
 		unsigned interval = stream->get_interval();
 		interval /= multiplier;
 
-		/* allow max ~600 Hz */
+		/* allow max ~2000 Hz */
 		if (interval < 1600) {
-			interval = 1600;
+			interval = 500;
 		}
 
 		/* set new interval */
@@ -1028,6 +1036,8 @@ Mavlink::configure_stream_threadsafe(const char *stream_name, const float rate)
 		do {
 			usleep(MAIN_LOOP_DELAY / 2);
 		} while (_subscribe_to_stream != nullptr);
+
+		delete s;
 	}
 }
 
@@ -1360,9 +1370,14 @@ Mavlink::task_main(int argc, char *argv[])
 
 	/* PARAM_VALUE stream */
 	_parameters_manager = (MavlinkParametersManager *) MavlinkParametersManager::new_instance(this);
-	_parameters_manager->set_interval(interval_from_rate(30.0f));
+	_parameters_manager->set_interval(interval_from_rate(120.0f));
 	LL_APPEND(_streams, _parameters_manager);
 
+	/* MAVLINK_FTP stream */
+	_mavlink_ftp = (MavlinkFTP *) MavlinkFTP::new_instance(this);
+	_mavlink_ftp->set_interval(interval_from_rate(80.0f));
+	LL_APPEND(_streams, _mavlink_ftp);
+	
 	/* MISSION_STREAM stream, actually sends all MISSION_XXX messages at some rate depending on
 	 * remote requests rate. Rate specified here controls how much bandwidth we will reserve for
 	 * mission messages. */
@@ -1402,6 +1417,7 @@ Mavlink::task_main(int argc, char *argv[])
 		configure_stream("VFR_HUD", 10.0f);
 		configure_stream("SYSTEM_TIME", 1.0f);
 		configure_stream("TIMESYNC", 10.0f);
+		configure_stream("ACTUATOR_CONTROL_TARGET0", 10.0f);
 		break;
 
 	default:
@@ -1409,7 +1425,7 @@ Mavlink::task_main(int argc, char *argv[])
 	}
 
 	/* set main loop delay depending on data rate to minimize CPU overhead */
-	_main_loop_delay = MAIN_LOOP_DELAY * 1000 / _datarate;
+	_main_loop_delay = (MAIN_LOOP_DELAY * 1000) / _datarate;
 
 	/* now the instance is fully initialized and we can bump the instance count */
 	LL_APPEND(_mavlink_instances, this);
@@ -1449,7 +1465,6 @@ Mavlink::task_main(int argc, char *argv[])
 				warnx("stream %s on device %s not found", _subscribe_to_stream, _device_name);
 			}
 
-			delete _subscribe_to_stream;
 			_subscribe_to_stream = nullptr;
 		}
 
@@ -1620,7 +1635,7 @@ Mavlink::start(int argc, char *argv[])
 	task_spawn_cmd(buf,
 		       SCHED_DEFAULT,
 		       SCHED_PRIORITY_DEFAULT,
-		       2800,
+		       2400,
 		       (main_t)&Mavlink::start_helper,
 		       (char * const *)argv);
 

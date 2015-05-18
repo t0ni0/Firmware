@@ -31,6 +31,7 @@ add_definitions(-Dnoreturn_function=)
 add_definitions(-Dmain_t=int)
 add_definitions(-DERROR=-1)
 add_definitions(-DOK=0)
+add_definitions(-D_UNIT_TEST=)
 
 # check
 add_custom_target(unittests COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure)
@@ -74,6 +75,19 @@ add_gtest(sbus2_test)
 add_executable(st24_test st24_test.cpp hrt.cpp ${PX_SRC}/lib/rc/st24.c)
 add_gtest(st24_test)
 
+# sumd_test
+add_executable(sumd_test sumd_test.cpp hrt.cpp ${PX_SRC}/lib/rc/sumd.c)
+add_gtest(sumd_test)
+
 # sf0x_test
 add_executable(sf0x_test sf0x_test.cpp ${PX_SRC}/drivers/sf0x/sf0x_parser.cpp)
 add_gtest(sf0x_test)
+
+# param_test
+add_executable(param_test param_test.cpp
+                          hrt.cpp
+                          uorb_stub.cpp
+                          ${PX_SRC}/modules/systemlib/param/param.c
+                          ${PX_SRC}/modules/systemlib/bson/tinybson.c
+                          )
+add_gtest(param_test)

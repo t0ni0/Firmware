@@ -43,26 +43,25 @@
 
 using namespace px4;
 
-void rc_channels_callback_function(const px4_rc_channels &msg) {
+void rc_channels_callback_function(const px4_rc_channels &msg)
+{
 	PX4_INFO("I heard: [%llu]", msg.data().timestamp_last_valid);
 }
 
 SubscriberExample::SubscriberExample() :
 	_n(),
-	_p_sub_interv(PX4_PARAM_INIT(SUB_INTERV)),
-	_interval(0),
-	_p_test_float(PX4_PARAM_INIT(SUB_TESTF)),
-	_test_float(0.0f)
+	_p_sub_interv("SUB_INTERV", PARAM_SUB_INTERV_DEFAULT),
+	_p_test_float("SUB_TESTF", PARAM_SUB_TESTF_DEFAULT)
 {
 	/* Read the parameter back as example */
-	PX4_PARAM_GET(_p_sub_interv, &_interval);
-	PX4_INFO("Param SUB_INTERV = %d", _interval);
-	PX4_PARAM_GET(_p_test_float, &_test_float);
-	PX4_INFO("Param SUB_TESTF = %.3f", (double)_test_float);
+	_p_sub_interv.update();
+	_p_test_float.update();
+	PX4_INFO("Param SUB_INTERV = %d", _p_sub_interv.get());
+	PX4_INFO("Param SUB_TESTF = %.3f", (double)_p_test_float.get());
 
 	/* Do some subscriptions */
 	/* Function */
-	_n.subscribe<px4_rc_channels>(rc_channels_callback_function, _interval);
+	_n.subscribe<px4_rc_channels>(rc_channels_callback_function, _p_sub_interv.get());
 
 	/* No callback */
 	_sub_rc_chan = _n.subscribe<px4_rc_channels>(500);
@@ -83,23 +82,26 @@ SubscriberExample::SubscriberExample() :
  * This tutorial demonstrates simple receipt of messages over the PX4 middleware system.
  * Also the current value of the _sub_rc_chan subscription is printed
  */
-void SubscriberExample::rc_channels_callback(const px4_rc_channels &msg) {
+void SubscriberExample::rc_channels_callback(const px4_rc_channels &msg)
+{
 	PX4_INFO("rc_channels_callback (method): [%llu]",
-			msg.data().timestamp_last_valid);
+		 msg.data().timestamp_last_valid);
 	PX4_INFO("rc_channels_callback (method): value of _sub_rc_chan: [%llu]",
-			_sub_rc_chan->data().timestamp_last_valid);
+		 _sub_rc_chan->data().timestamp_last_valid);
 }
 
-void SubscriberExample::vehicle_attitude_callback(const px4_vehicle_attitude &msg) {
+void SubscriberExample::vehicle_attitude_callback(const px4_vehicle_attitude &msg)
+{
 	PX4_INFO("vehicle_attitude_callback (method): [%llu]",
-			msg.data().timestamp);
+		 msg.data().timestamp);
 }
 
-void SubscriberExample::parameter_update_callback(const px4_parameter_update &msg) {
+void SubscriberExample::parameter_update_callback(const px4_parameter_update &msg)
+{
 	PX4_INFO("parameter_update_callback (method): [%llu]",
-			msg.data().timestamp);
-	PX4_PARAM_GET(_p_sub_interv, &_interval);
-	PX4_INFO("Param SUB_INTERV = %d", _interval);
-	PX4_PARAM_GET(_p_test_float, &_test_float);
-	PX4_INFO("Param SUB_TESTF = %.3f", (double)_test_float);
+		 msg.data().timestamp);
+	_p_sub_interv.update();
+	PX4_INFO("Param SUB_INTERV = %d", _p_sub_interv.get());
+	_p_test_float.update();
+	PX4_INFO("Param SUB_TESTF = %.3f", (double)_p_test_float.get());
 }

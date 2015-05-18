@@ -41,6 +41,9 @@
 
 #include "mc_pos_control.h"
 #include "mc_pos_control_params.h"
+/* The following inclue is needed because the pos controller depens on a parameter from attitude control to set a
+ * reasonable yaw setpoint in manual mode */
+#include <mc_att_control_multiplatform/mc_att_control_params.h>
 
 #define TILT_COS_MAX	0.7f
 #define SIGMA		0.000001f
@@ -52,11 +55,42 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	_control_task(-1),
 	_mavlink_fd(-1),
 
-/* publications */
+	/* publications */
 	_att_sp_pub(nullptr),
 	_local_pos_sp_pub(nullptr),
 	_global_vel_sp_pub(nullptr),
 
+	/* outgoing messages */
+	_att_sp_msg(),
+	_local_pos_sp_msg(),
+	_global_vel_sp_msg(),
+
+	_n(),
+
+	/* parameters */
+	_params_handles({
+		.thr_min	    = px4::ParameterFloat("MPP_THR_MIN", PARAM_MPP_THR_MIN_DEFAULT),
+		.thr_max	    = px4::ParameterFloat("MPP_THR_MAX", PARAM_MPP_THR_MAX_DEFAULT),
+		.z_p		    = px4::ParameterFloat("MPP_Z_P", PARAM_MPP_Z_P_DEFAULT),
+		.z_vel_p	    = px4::ParameterFloat("MPP_Z_VEL_P", PARAM_MPP_Z_VEL_P_DEFAULT),
+		.z_vel_i	    = px4::ParameterFloat("MPP_Z_VEL_I", PARAM_MPP_Z_VEL_I_DEFAULT),
+		.z_vel_d	    = px4::ParameterFloat("MPP_Z_VEL_D", PARAM_MPP_Z_VEL_D_DEFAULT),
+		.z_vel_max	    = px4::ParameterFloat("MPP_Z_VEL_MAX", PARAM_MPP_Z_VEL_MAX_DEFAULT),
+		.z_ff		    = px4::ParameterFloat("MPP_Z_FF", PARAM_MPP_Z_FF_DEFAULT),
+		.xy_p		    = px4::ParameterFloat("MPP_XY_P", PARAM_MPP_XY_P_DEFAULT),
+		.xy_vel_p	    = px4::ParameterFloat("MPP_XY_VEL_P", PARAM_MPP_XY_VEL_P_DEFAULT),
+		.xy_vel_i	    = px4::ParameterFloat("MPP_XY_VEL_I", PARAM_MPP_XY_VEL_I_DEFAULT),
+		.xy_vel_d	    = px4::ParameterFloat("MPP_XY_VEL_D", PARAM_MPP_XY_VEL_D_DEFAULT),
+		.xy_vel_max	    = px4::ParameterFloat("MPP_XY_VEL_MAX", PARAM_MPP_XY_VEL_MAX_DEFAULT),
+		.xy_ff		    = px4::ParameterFloat("MPP_XY_FF", PARAM_MPP_XY_FF_DEFAULT),
+		.tilt_max_air	    = px4::ParameterFloat("MPP_TILTMAX_AIR", PARAM_MPP_TILTMAX_AIR_DEFAULT),
+		.land_speed	    = px4::ParameterFloat("MPP_LAND_SPEED", PARAM_MPP_LAND_SPEED_DEFAULT),
+		.tilt_max_land	    = px4::ParameterFloat("MPP_TILTMAX_LND", PARAM_MPP_TILTMAX_LND_DEFAULT),
+		.man_roll_max	    = px4::ParameterFloat("MPP_MAN_R_MAX", PARAM_MPP_MAN_R_MAX_DEFAULT),
+		.man_pitch_max	    = px4::ParameterFloat("MPP_MAN_P_MAX", PARAM_MPP_MAN_P_MAX_DEFAULT),
+		.man_yaw_max	    = px4::ParameterFloat("MPP_MAN_Y_MAX", PARAM_MPP_MAN_Y_MAX_DEFAULT),
+		.mc_att_yaw_p	    = px4::ParameterFloat("MP_YAW_P", PARAM_MP_YAW_P_DEFAULT)
+	}),
 	_ref_alt(0.0f),
 	_ref_timestamp(0),
 
@@ -72,17 +106,15 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	 * Do subscriptions
 	 */
 	_att = _n.subscribe<px4_vehicle_attitude>(&MulticopterPositionControl::handle_vehicle_attitude, this, 0);
-	_v_att_sp = _n.subscribe<px4_vehicle_attitude_setpoint>(0);
 	_control_mode = _n.subscribe<px4_vehicle_control_mode>(0);
 	_parameter_update = _n.subscribe<px4_parameter_update>(
 			&MulticopterPositionControl::handle_parameter_update, this, 1000);
 	_manual_control_sp = _n.subscribe<px4_manual_control_setpoint>(0);
 	_armed = _n.subscribe<px4_actuator_armed>(0);
 	_local_pos = _n.subscribe<px4_vehicle_local_position>(0);
-	_pos_sp_triplet = _n.subscribe<px4_position_setpoint_triplet>(0);
+	_pos_sp_triplet = _n.subscribe<px4_position_setpoint_triplet>(&MulticopterPositionControl::handle_position_setpoint_triplet, this, 0);
 	_local_pos_sp = _n.subscribe<px4_vehicle_local_position_setpoint>(0);
 	_global_vel_sp = _n.subscribe<px4_vehicle_global_velocity_setpoint>(0);
-
 
 
 	_params.pos_p.zero();
@@ -101,24 +133,6 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	_vel_ff.zero();
 	_sp_move_rate.zero();
 
-	_params_handles.thr_min		= PX4_PARAM_INIT(MPC_THR_MIN);
-	_params_handles.thr_max		= PX4_PARAM_INIT(MPC_THR_MAX);
-	_params_handles.z_p		= PX4_PARAM_INIT(MPC_Z_P);
-	_params_handles.z_vel_p		= PX4_PARAM_INIT(MPC_Z_VEL_P);
-	_params_handles.z_vel_i		= PX4_PARAM_INIT(MPC_Z_VEL_I);
-	_params_handles.z_vel_d		= PX4_PARAM_INIT(MPC_Z_VEL_D);
-	_params_handles.z_vel_max	= PX4_PARAM_INIT(MPC_Z_VEL_MAX);
-	_params_handles.z_ff		= PX4_PARAM_INIT(MPC_Z_FF);
-	_params_handles.xy_p		= PX4_PARAM_INIT(MPC_XY_P);
-	_params_handles.xy_vel_p	= PX4_PARAM_INIT(MPC_XY_VEL_P);
-	_params_handles.xy_vel_i	= PX4_PARAM_INIT(MPC_XY_VEL_I);
-	_params_handles.xy_vel_d	= PX4_PARAM_INIT(MPC_XY_VEL_D);
-	_params_handles.xy_vel_max	= PX4_PARAM_INIT(MPC_XY_VEL_MAX);
-	_params_handles.xy_ff		= PX4_PARAM_INIT(MPC_XY_FF);
-	_params_handles.tilt_max_air	= PX4_PARAM_INIT(MPC_TILTMAX_AIR);
-	_params_handles.land_speed	= PX4_PARAM_INIT(MPC_LAND_SPEED);
-	_params_handles.tilt_max_land	= PX4_PARAM_INIT(MPC_TILTMAX_LND);
-
 	/* fetch initial parameter values */
 	parameters_update();
 
@@ -132,47 +146,32 @@ MulticopterPositionControl::~MulticopterPositionControl()
 int
 MulticopterPositionControl::parameters_update()
 {
-	PX4_PARAM_GET(_params_handles.thr_min, &_params.thr_min);
-	PX4_PARAM_GET(_params_handles.thr_max, &_params.thr_max);
-	PX4_PARAM_GET(_params_handles.tilt_max_air, &_params.tilt_max_air);
-	_params.tilt_max_air = math::radians(_params.tilt_max_air);
-	PX4_PARAM_GET(_params_handles.land_speed, &_params.land_speed);
-	PX4_PARAM_GET(_params_handles.tilt_max_land, &_params.tilt_max_land);
-	_params.tilt_max_land = math::radians(_params.tilt_max_land);
+	_params.thr_min = _params_handles.thr_min.update();
+	_params.thr_max = _params_handles.thr_max.update();
+	_params.tilt_max_air = math::radians(_params_handles.tilt_max_air.update());
+	_params.land_speed = _params_handles.land_speed.update();
+	_params.tilt_max_land = math::radians(_params_handles.tilt_max_land.update());
 
-	float v;
-	PX4_PARAM_GET(_params_handles.xy_p, &v);
-	_params.pos_p(0) = v;
-	_params.pos_p(1) = v;
-	PX4_PARAM_GET(_params_handles.z_p, &v);
-	_params.pos_p(2) = v;
-	PX4_PARAM_GET(_params_handles.xy_vel_p, &v);
-	_params.vel_p(0) = v;
-	_params.vel_p(1) = v;
-	PX4_PARAM_GET(_params_handles.z_vel_p, &v);
-	_params.vel_p(2) = v;
-	PX4_PARAM_GET(_params_handles.xy_vel_i, &v);
-	_params.vel_i(0) = v;
-	_params.vel_i(1) = v;
-	PX4_PARAM_GET(_params_handles.z_vel_i, &v);
-	_params.vel_i(2) = v;
-	PX4_PARAM_GET(_params_handles.xy_vel_d, &v);
-	_params.vel_d(0) = v;
-	_params.vel_d(1) = v;
-	PX4_PARAM_GET(_params_handles.z_vel_d, &v);
-	_params.vel_d(2) = v;
-	PX4_PARAM_GET(_params_handles.xy_vel_max, &v);
-	_params.vel_max(0) = v;
-	_params.vel_max(1) = v;
-	PX4_PARAM_GET(_params_handles.z_vel_max, &v);
-	_params.vel_max(2) = v;
-	PX4_PARAM_GET(_params_handles.xy_ff, &v);
-	v = math::constrain(v, 0.0f, 1.0f);
-	_params.vel_ff(0) = v;
-	_params.vel_ff(1) = v;
-	PX4_PARAM_GET(_params_handles.z_ff, &v);
-	v = math::constrain(v, 0.0f, 1.0f);
-	_params.vel_ff(2) = v;
+	/* manual control scale */
+	_params.man_roll_max = math::radians(_params_handles.man_roll_max.update());
+	_params.man_pitch_max = math::radians(_params_handles.man_pitch_max.update());
+	_params.man_yaw_max = math::radians(_params_handles.man_yaw_max.update());
+
+	_params.mc_att_yaw_p = _params_handles.mc_att_yaw_p.update();
+
+	_params.pos_p(0) = _params.pos_p(1) = _params_handles.xy_p.update();
+	_params.pos_p(2) = _params_handles.z_p.update();
+	_params.vel_p(0) = _params.vel_p(1) = _params_handles.xy_vel_p.update();
+	_params.vel_p(2) = _params_handles.z_vel_p.update();
+	_params.vel_i(0) = _params.vel_i(1) = _params_handles.xy_vel_i.update();
+	_params.vel_i(2) = _params_handles.z_vel_i.update();
+	_params.vel_d(0) = _params.vel_d(1) = _params_handles.xy_vel_d.update();
+	_params.vel_d(2) = _params_handles.z_vel_d.update();
+	_params.vel_max(0) = _params.vel_max(1) = _params_handles.xy_vel_max.update();
+	_params.vel_max(2) = _params_handles.z_vel_max.update();
+
+	_params.vel_ff(0) = _params.vel_ff(1) = math::constrain(_params_handles.xy_ff.update(), 0.0f, 1.0f);
+	_params.vel_ff(2) = math::constrain(_params_handles.z_ff.update(), 0.0f, 1.0f);
 
 	_params.sp_offs_max = _params.vel_max.edivide(_params.pos_p) * 2.0f;
 
@@ -244,6 +243,10 @@ MulticopterPositionControl::reset_alt_sp()
 	if (_reset_alt_sp) {
 		_reset_alt_sp = false;
 		_pos_sp(2) = _pos(2) + (_vel(2) - _params.vel_ff(2) * _sp_move_rate(2)) / _params.pos_p(2);
+
+		//XXX hack until #1741 is in/ported
+		/* reset yaw sp */
+		_att_sp_msg.data().yaw_body = _att->data().yaw;
 
 		//XXX: port this once a mavlink like interface is available
 		// mavlink_log_info(_mavlink_fd, "[mpc] reset alt sp: %d", -(int)_pos_sp(2));
@@ -548,11 +551,22 @@ void MulticopterPositionControl::handle_parameter_update(const px4_parameter_upd
 	parameters_update();
 }
 
+void MulticopterPositionControl::handle_position_setpoint_triplet(const px4_position_setpoint_triplet &msg)
+{
+	/* Make sure that the position setpoint is valid */
+	if (!isfinite(_pos_sp_triplet->data().current.lat) ||
+			!isfinite(_pos_sp_triplet->data().current.lon) ||
+			!isfinite(_pos_sp_triplet->data().current.alt)) {
+		_pos_sp_triplet->data().current.valid = false;
+	}
+}
+
 void  MulticopterPositionControl::handle_vehicle_attitude(const px4_vehicle_attitude &msg)
 {
 	static bool reset_int_z = true;
 	static bool reset_int_z_manual = false;
 	static bool reset_int_xy = true;
+	static bool reset_yaw_sp = true;
 	static bool was_armed = false;
 	static uint64_t t_prev = 0;
 
@@ -566,8 +580,10 @@ void  MulticopterPositionControl::handle_vehicle_attitude(const px4_vehicle_atti
 		_reset_alt_sp = true;
 		reset_int_z = true;
 		reset_int_xy = true;
+		reset_yaw_sp = true;
 	}
 
+	/* Update previous arming state */
 	was_armed = _control_mode->data().flag_armed;
 
 	update_ref();
@@ -603,22 +619,6 @@ void  MulticopterPositionControl::handle_vehicle_attitude(const px4_vehicle_atti
 			/* AUTO */
 			control_auto(dt);
 		}
-
-		/* fill local position setpoint */
-		_local_pos_sp_msg.data().timestamp = get_time_micros();
-		_local_pos_sp_msg.data().x = _pos_sp(0);
-		_local_pos_sp_msg.data().y = _pos_sp(1);
-		_local_pos_sp_msg.data().z = _pos_sp(2);
-		_local_pos_sp_msg.data().yaw = _att_sp_msg.data().yaw_body;
-
-		/* publish local position setpoint */
-		if (_local_pos_sp_pub != nullptr) {
-			_local_pos_sp_pub->publish(_local_pos_sp_msg);
-
-		} else {
-			_local_pos_sp_pub = _n.advertise<px4_vehicle_local_position_setpoint>();
-		}
-
 
 		if (!_control_mode->data().flag_control_manual_enabled && _pos_sp_triplet->data().current.valid && _pos_sp_triplet->data().current.type == _pos_sp_triplet->data().current.SETPOINT_TYPE_IDLE) {
 			/* idle state, don't run controller and set zero thrust */
@@ -920,6 +920,11 @@ void  MulticopterPositionControl::handle_vehicle_attitude(const px4_vehicle_atti
 
 				_att_sp_msg.data().thrust = thrust_abs;
 
+				/* save thrust setpoint for logging */
+				_local_pos_sp_msg.data().acc_x = thrust_sp(0);
+				_local_pos_sp_msg.data().acc_y = thrust_sp(1);
+				_local_pos_sp_msg.data().acc_z = thrust_sp(2);
+
 				_att_sp_msg.data().timestamp = get_time_micros();
 
 				/* publish attitude setpoint */
@@ -935,6 +940,25 @@ void  MulticopterPositionControl::handle_vehicle_attitude(const px4_vehicle_atti
 			}
 		}
 
+		/* fill local position setpoint */
+		_local_pos_sp_msg.data().timestamp = get_time_micros();
+		_local_pos_sp_msg.data().x = _pos_sp(0);
+		_local_pos_sp_msg.data().y = _pos_sp(1);
+		_local_pos_sp_msg.data().z = _pos_sp(2);
+		_local_pos_sp_msg.data().yaw = _att_sp_msg.data().yaw_body;
+		_local_pos_sp_msg.data().vx = _vel_sp(0);
+		_local_pos_sp_msg.data().vy = _vel_sp(1);
+		_local_pos_sp_msg.data().vz = _vel_sp(2);
+
+		/* publish local position setpoint */
+		if (_local_pos_sp_pub != nullptr) {
+			_local_pos_sp_pub->publish(_local_pos_sp_msg);
+
+		} else {
+			_local_pos_sp_pub = _n.advertise<px4_vehicle_local_position_setpoint>();
+		}
+
+
 	} else {
 		/* position controller disabled, reset setpoints */
 		_reset_alt_sp = true;
@@ -942,6 +966,68 @@ void  MulticopterPositionControl::handle_vehicle_attitude(const px4_vehicle_atti
 		_mode_auto = false;
 		reset_int_z = true;
 		reset_int_xy = true;
+	}
+
+	/* generate attitude setpoint from manual controls */
+	if(_control_mode->data().flag_control_manual_enabled && _control_mode->data().flag_control_attitude_enabled) {
+
+		/* reset yaw setpoint to current position if needed */
+		if (reset_yaw_sp) {
+			reset_yaw_sp = false;
+			_att_sp_msg.data().yaw_body = _att->data().yaw;
+		}
+
+		/* do not move yaw while arming */
+		else if (_manual_control_sp->data().z > 0.1f)
+		{
+			const float YAW_OFFSET_MAX = _params.man_yaw_max / _params.mc_att_yaw_p;
+
+			_att_sp_msg.data().yaw_sp_move_rate = _manual_control_sp->data().r * _params.man_yaw_max;
+			_att_sp_msg.data().yaw_body = _wrap_pi(_att_sp_msg.data().yaw_body + _att_sp_msg.data().yaw_sp_move_rate * dt);
+			float yaw_offs = _wrap_pi(_att_sp_msg.data().yaw_body - _att->data().yaw);
+			if (yaw_offs < - YAW_OFFSET_MAX) {
+				_att_sp_msg.data().yaw_body = _wrap_pi(_att->data().yaw - YAW_OFFSET_MAX);
+
+			} else if (yaw_offs > YAW_OFFSET_MAX) {
+				_att_sp_msg.data().yaw_body = _wrap_pi(_att->data().yaw + YAW_OFFSET_MAX);
+			}
+		}
+
+		/* Control roll and pitch directly if we no aiding velocity controller is active */
+		if(!_control_mode->data().flag_control_velocity_enabled) {
+			_att_sp_msg.data().roll_body = _manual_control_sp->data().y * _params.man_roll_max;
+			_att_sp_msg.data().pitch_body = -_manual_control_sp->data().x * _params.man_pitch_max;
+		}
+
+		/* Control climb rate directly if no aiding altitude controller is active */
+		if(!_control_mode->data().flag_control_climb_rate_enabled) {
+			_att_sp_msg.data().thrust = _manual_control_sp->data().z;
+		}
+
+		/* Construct attitude setpoint rotation matrix */
+		math::Matrix<3,3> R_sp;
+		R_sp.from_euler(_att_sp_msg.data().roll_body,_att_sp_msg.data().pitch_body,_att_sp_msg.data().yaw_body);
+		_att_sp_msg.data().R_valid = true;
+		memcpy(&_att_sp_msg.data().R_body[0], R_sp.data, sizeof(_att_sp_msg.data().R_body));
+		_att_sp_msg.data().timestamp = get_time_micros();
+	}
+	else {
+		reset_yaw_sp = true;
+	}
+
+	/* publish attitude setpoint
+	 * Do not publish if offboard is enabled but position/velocity control is disabled, in this case the attitude setpoint
+	 * is published by the mavlink app
+	 */
+	if (!(_control_mode->data().flag_control_offboard_enabled &&
+				!(_control_mode->data().flag_control_position_enabled ||
+					_control_mode->data().flag_control_velocity_enabled))) {
+		if (_att_sp_pub != nullptr) {
+			_att_sp_pub->publish(_att_sp_msg);
+
+		} else {
+			_att_sp_pub = _n.advertise<px4_vehicle_attitude_setpoint>();
+		}
 	}
 
 	/* reset altitude controller integral (hovering throttle) to manual throttle after manual throttle control */

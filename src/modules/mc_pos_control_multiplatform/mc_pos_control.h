@@ -75,6 +75,7 @@ public:
 	/* Callbacks for topics */
 	void handle_vehicle_attitude(const px4_vehicle_attitude &msg);
 	void handle_parameter_update(const px4_parameter_update &msg);
+	void handle_position_setpoint_triplet(const px4_position_setpoint_triplet &msg);
 
 	void spin() { _n.spin(); }
 
@@ -87,19 +88,18 @@ protected:
 
 	Publisher<px4_vehicle_attitude_setpoint>	*_att_sp_pub;			/**< attitude setpoint publication */
 	Publisher<px4_vehicle_local_position_setpoint>	*_local_pos_sp_pub;		/**< vehicle local position setpoint publication */
-	Publisher<px4_vehicle_global_velocity_setpoint>		*_global_vel_sp_pub;		/**< vehicle global velocity setpoint publication */
+	Publisher<px4_vehicle_global_velocity_setpoint>	*_global_vel_sp_pub;		/**< vehicle global velocity setpoint publication */
 
 
-	Subscriber<px4_vehicle_attitude> *_att;			    /**< vehicle attitude */
-	Subscriber<px4_vehicle_attitude_setpoint> *_v_att_sp;	    /**< vehicle attitude setpoint */
-	Subscriber<px4_vehicle_control_mode> *_control_mode;	    /**< vehicle control mode */
-	Subscriber<px4_parameter_update> *_parameter_update;	    /**< parameter update */
-	Subscriber<px4_manual_control_setpoint> *_manual_control_sp;   /**< manual control setpoint */
-	Subscriber<px4_actuator_armed> *_armed;			    /**< actuator arming status */
-	Subscriber<px4_vehicle_local_position> *_local_pos;			    /**< local position */
-	Subscriber<px4_position_setpoint_triplet> *_pos_sp_triplet;			    /**< local position */
-	Subscriber<px4_vehicle_local_position_setpoint> *_local_pos_sp;			    /**< local position */
-	Subscriber<px4_vehicle_global_velocity_setpoint> *_global_vel_sp;			    /**< local position */
+	Subscriber<px4_vehicle_attitude> *_att;				    /**< vehicle attitude */
+	Subscriber<px4_vehicle_control_mode> *_control_mode;		    /**< vehicle control mode */
+	Subscriber<px4_parameter_update> *_parameter_update;		    /**< parameter update */
+	Subscriber<px4_manual_control_setpoint> *_manual_control_sp;	    /**< manual control setpoint */
+	Subscriber<px4_actuator_armed> *_armed;				    /**< actuator arming status */
+	Subscriber<px4_vehicle_local_position> *_local_pos;		    /**< local position */
+	Subscriber<px4_position_setpoint_triplet> *_pos_sp_triplet;	    /**< local position */
+	Subscriber<px4_vehicle_local_position_setpoint> *_local_pos_sp;	    /**< local position */
+	Subscriber<px4_vehicle_global_velocity_setpoint> *_global_vel_sp;   /**< local position */
 
 	px4_vehicle_attitude_setpoint _att_sp_msg;
 	px4_vehicle_local_position_setpoint _local_pos_sp_msg;
@@ -107,25 +107,28 @@ protected:
 
 	px4::NodeHandle _n;
 
-
 	struct {
-		px4_param_t thr_min;
-		px4_param_t thr_max;
-		px4_param_t z_p;
-		px4_param_t z_vel_p;
-		px4_param_t z_vel_i;
-		px4_param_t z_vel_d;
-		px4_param_t z_vel_max;
-		px4_param_t z_ff;
-		px4_param_t xy_p;
-		px4_param_t xy_vel_p;
-		px4_param_t xy_vel_i;
-		px4_param_t xy_vel_d;
-		px4_param_t xy_vel_max;
-		px4_param_t xy_ff;
-		px4_param_t tilt_max_air;
-		px4_param_t land_speed;
-		px4_param_t tilt_max_land;
+		px4::ParameterFloat thr_min;
+		px4::ParameterFloat thr_max;
+		px4::ParameterFloat z_p;
+		px4::ParameterFloat z_vel_p;
+		px4::ParameterFloat z_vel_i;
+		px4::ParameterFloat z_vel_d;
+		px4::ParameterFloat z_vel_max;
+		px4::ParameterFloat z_ff;
+		px4::ParameterFloat xy_p;
+		px4::ParameterFloat xy_vel_p;
+		px4::ParameterFloat xy_vel_i;
+		px4::ParameterFloat xy_vel_d;
+		px4::ParameterFloat xy_vel_max;
+		px4::ParameterFloat xy_ff;
+		px4::ParameterFloat tilt_max_air;
+		px4::ParameterFloat land_speed;
+		px4::ParameterFloat tilt_max_land;
+		px4::ParameterFloat man_roll_max;
+		px4::ParameterFloat man_pitch_max;
+		px4::ParameterFloat man_yaw_max;
+		px4::ParameterFloat mc_att_yaw_p;   // needed for calculating reasonable attitude setpoints in manual
 	}		_params_handles;		/**< handles for interesting parameters */
 
 	struct {
@@ -134,6 +137,10 @@ protected:
 		float tilt_max_air;
 		float land_speed;
 		float tilt_max_land;
+		float man_roll_max;
+		float man_pitch_max;
+		float man_yaw_max;
+		float mc_att_yaw_p;
 
 		math::Vector<3> pos_p;
 		math::Vector<3> vel_p;

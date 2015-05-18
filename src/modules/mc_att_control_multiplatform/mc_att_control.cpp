@@ -73,31 +73,31 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	_actuators_0_pub(nullptr),
 	_n(),
 
+	/* parameters */
+	_params_handles({
+			.roll_p		= px4::ParameterFloat("MP_ROLL_P", PARAM_MP_ROLL_P_DEFAULT),
+			.roll_rate_p	= px4::ParameterFloat("MP_ROLLRATE_P", PARAM_MP_ROLLRATE_P_DEFAULT),
+			.roll_rate_i	= px4::ParameterFloat("MP_ROLLRATE_I", PARAM_MP_ROLLRATE_I_DEFAULT),
+			.roll_rate_d	= px4::ParameterFloat("MP_ROLLRATE_D", PARAM_MP_ROLLRATE_D_DEFAULT),
+			.pitch_p	= px4::ParameterFloat("MP_PITCH_P", PARAM_MP_PITCH_P_DEFAULT),
+			.pitch_rate_p	= px4::ParameterFloat("MP_PITCHRATE_P", PARAM_MP_PITCHRATE_P_DEFAULT),
+			.pitch_rate_i	= px4::ParameterFloat("MP_PITCHRATE_I", PARAM_MP_PITCHRATE_I_DEFAULT),
+			.pitch_rate_d	= px4::ParameterFloat("MP_PITCHRATE_D", PARAM_MP_PITCHRATE_D_DEFAULT),
+			.yaw_p		= px4::ParameterFloat("MP_YAW_P", PARAM_MP_YAW_P_DEFAULT),
+			.yaw_rate_p	= px4::ParameterFloat("MP_YAWRATE_P", PARAM_MP_YAWRATE_P_DEFAULT),
+			.yaw_rate_i	= px4::ParameterFloat("MP_YAWRATE_I", PARAM_MP_YAWRATE_I_DEFAULT),
+			.yaw_rate_d	= px4::ParameterFloat("MP_YAWRATE_D", PARAM_MP_YAWRATE_D_DEFAULT),
+			.yaw_ff		= px4::ParameterFloat("MP_YAW_FF", PARAM_MP_YAW_FF_DEFAULT),
+			.yaw_rate_max	= px4::ParameterFloat("MP_YAWRATE_MAX", PARAM_MP_YAWRATE_MAX_DEFAULT),
+			.acro_roll_max	= px4::ParameterFloat("MP_ACRO_R_MAX", PARAM_MP_ACRO_R_MAX_DEFAULT),
+			.acro_pitch_max	= px4::ParameterFloat("MP_ACRO_P_MAX", PARAM_MP_ACRO_P_MAX_DEFAULT),
+			.acro_yaw_max	= px4::ParameterFloat("MP_ACRO_Y_MAX", PARAM_MP_ACRO_Y_MAX_DEFAULT)
+	}),
+
 	/* performance counters */
 	_loop_perf(perf_alloc(PC_ELAPSED, "mc_att_control"))
 
 {
-	_params_handles.roll_p			= 	PX4_PARAM_INIT(MC_ROLL_P);
-	_params_handles.roll_rate_p		= 	PX4_PARAM_INIT(MC_ROLLRATE_P);
-	_params_handles.roll_rate_i		= 	PX4_PARAM_INIT(MC_ROLLRATE_I);
-	_params_handles.roll_rate_d		= 	PX4_PARAM_INIT(MC_ROLLRATE_D);
-	_params_handles.pitch_p			= 	PX4_PARAM_INIT(MC_PITCH_P);
-	_params_handles.pitch_rate_p		= 	PX4_PARAM_INIT(MC_PITCHRATE_P);
-	_params_handles.pitch_rate_i		= 	PX4_PARAM_INIT(MC_PITCHRATE_I);
-	_params_handles.pitch_rate_d		= 	PX4_PARAM_INIT(MC_PITCHRATE_D);
-	_params_handles.yaw_p			=	PX4_PARAM_INIT(MC_YAW_P);
-	_params_handles.yaw_rate_p		= 	PX4_PARAM_INIT(MC_YAWRATE_P);
-	_params_handles.yaw_rate_i		= 	PX4_PARAM_INIT(MC_YAWRATE_I);
-	_params_handles.yaw_rate_d		= 	PX4_PARAM_INIT(MC_YAWRATE_D);
-	_params_handles.yaw_ff			= 	PX4_PARAM_INIT(MC_YAW_FF);
-	_params_handles.yaw_rate_max		= 	PX4_PARAM_INIT(MC_YAWRATE_MAX);
-	_params_handles.man_roll_max		= 	PX4_PARAM_INIT(MC_MAN_R_MAX);
-	_params_handles.man_pitch_max		= 	PX4_PARAM_INIT(MC_MAN_P_MAX);
-	_params_handles.man_yaw_max		= 	PX4_PARAM_INIT(MC_MAN_Y_MAX);
-	_params_handles.acro_roll_max		= 	PX4_PARAM_INIT(MC_ACRO_R_MAX);
-	_params_handles.acro_pitch_max		= 	PX4_PARAM_INIT(MC_ACRO_P_MAX);
-	_params_handles.acro_yaw_max		= 	PX4_PARAM_INIT(MC_ACRO_Y_MAX);
-
 	/* fetch initial parameter values */
 	parameters_update();
 
@@ -113,7 +113,6 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	_manual_control_sp = _n.subscribe<px4_manual_control_setpoint>(0);
 	_armed = _n.subscribe<px4_actuator_armed>(0);
 	_v_status = _n.subscribe<px4_vehicle_status>(0);
-
 }
 
 MulticopterAttitudeControl::~MulticopterAttitudeControl()
@@ -123,57 +122,31 @@ MulticopterAttitudeControl::~MulticopterAttitudeControl()
 int
 MulticopterAttitudeControl::parameters_update()
 {
-	float v;
-
 	/* roll gains */
-	PX4_PARAM_GET(_params_handles.roll_p, &v);
-	_params.att_p(0) = v;
-	PX4_PARAM_GET(_params_handles.roll_rate_p, &v);
-	_params.rate_p(0) = v;
-	PX4_PARAM_GET(_params_handles.roll_rate_i, &v);
-	_params.rate_i(0) = v;
-	PX4_PARAM_GET(_params_handles.roll_rate_d, &v);
-	_params.rate_d(0) = v;
+	_params.att_p(0) = _params_handles.roll_p.update();
+	_params.rate_p(0) = _params_handles.roll_rate_p.update();
+	_params.rate_i(0) = _params_handles.roll_rate_i.update();
+	_params.rate_d(0) = _params_handles.roll_rate_d.update();
 
 	/* pitch gains */
-	PX4_PARAM_GET(_params_handles.pitch_p, &v);
-	_params.att_p(1) = v;
-	PX4_PARAM_GET(_params_handles.pitch_rate_p, &v);
-	_params.rate_p(1) = v;
-	PX4_PARAM_GET(_params_handles.pitch_rate_i, &v);
-	_params.rate_i(1) = v;
-	PX4_PARAM_GET(_params_handles.pitch_rate_d, &v);
-	_params.rate_d(1) = v;
+	_params.att_p(1) = _params_handles.pitch_p.update();
+	_params.rate_p(1) = _params_handles.pitch_rate_p.update();
+	_params.rate_i(1) = _params_handles.pitch_rate_i.update();
+	_params.rate_d(1) = _params_handles.pitch_rate_d.update();
 
 	/* yaw gains */
-	PX4_PARAM_GET(_params_handles.yaw_p, &v);
-	_params.att_p(2) = v;
-	PX4_PARAM_GET(_params_handles.yaw_rate_p, &v);
-	_params.rate_p(2) = v;
-	PX4_PARAM_GET(_params_handles.yaw_rate_i, &v);
-	_params.rate_i(2) = v;
-	PX4_PARAM_GET(_params_handles.yaw_rate_d, &v);
-	_params.rate_d(2) = v;
+	_params.att_p(2) = _params_handles.yaw_p.update();
+	_params.rate_p(2) = _params_handles.yaw_rate_p.update();
+	_params.rate_i(2) = _params_handles.yaw_rate_i.update();
+	_params.rate_d(2) = _params_handles.yaw_rate_d.update();
 
-	PX4_PARAM_GET(_params_handles.yaw_ff, &_params.yaw_ff);
-	PX4_PARAM_GET(_params_handles.yaw_rate_max, &_params.yaw_rate_max);
-	_params.yaw_rate_max = math::radians(_params.yaw_rate_max);
-
-	/* manual control scale */
-	PX4_PARAM_GET(_params_handles.man_roll_max, &_params.man_roll_max);
-	PX4_PARAM_GET(_params_handles.man_pitch_max, &_params.man_pitch_max);
-	PX4_PARAM_GET(_params_handles.man_yaw_max, &_params.man_yaw_max);
-	_params.man_roll_max = math::radians(_params.man_roll_max);
-	_params.man_pitch_max = math::radians(_params.man_pitch_max);
-	_params.man_yaw_max = math::radians(_params.man_yaw_max);
+	_params.yaw_ff = _params_handles.yaw_ff.update();
+	_params.yaw_rate_max = math::radians(_params_handles.yaw_rate_max.update());
 
 	/* acro control scale */
-	PX4_PARAM_GET(_params_handles.acro_roll_max, &v);
-	_params.acro_rate_max(0) = math::radians(v);
-	PX4_PARAM_GET(_params_handles.acro_pitch_max, &v);
-	_params.acro_rate_max(1) = math::radians(v);
-	PX4_PARAM_GET(_params_handles.acro_yaw_max, &v);
-	_params.acro_rate_max(2) = math::radians(v);
+	_params.acro_rate_max(0) = math::radians(_params_handles.acro_roll_max.update());
+	_params.acro_rate_max(1) = math::radians(_params_handles.acro_pitch_max.update());
+	_params.acro_rate_max(2) = math::radians(_params_handles.acro_yaw_max.update());
 
 	_actuators_0_circuit_breaker_enabled = circuit_breaker_enabled("CBRK_RATE_CTRL", CBRK_RATE_CTRL_KEY);
 
@@ -205,18 +178,6 @@ void  MulticopterAttitudeControl::handle_vehicle_attitude(const px4_vehicle_atti
 	if (_v_control_mode->data().flag_control_attitude_enabled) {
 		control_attitude(dt);
 
-		/* publish the attitude setpoint if needed */
-		if (_publish_att_sp && _v_status->data().is_rotary_wing) {
-			_v_att_sp_mod.data().timestamp = px4::get_time_micros();
-
-			if (_att_sp_pub != nullptr) {
-				_att_sp_pub->publish(_v_att_sp_mod);
-
-			} else {
-				_att_sp_pub = _n.advertise<px4_vehicle_attitude_setpoint>();
-			}
-		}
-
 		/* publish attitude rates setpoint */
 		_v_rates_sp_mod.data().roll = _rates_sp(0);
 		_v_rates_sp_mod.data().pitch = _rates_sp(1);
@@ -242,9 +203,6 @@ void  MulticopterAttitudeControl::handle_vehicle_attitude(const px4_vehicle_atti
 			_rates_sp = math::Vector<3>(_manual_control_sp->data().y, -_manual_control_sp->data().x,
 						    _manual_control_sp->data().r).emult(_params.acro_rate_max);
 			_thrust_sp = _manual_control_sp->data().z;
-
-			/* reset yaw setpoint after ACRO */
-			_reset_yaw_sp = true;
 
 			/* publish attitude rates setpoint */
 			_v_rates_sp_mod.data().roll = _rates_sp(0);

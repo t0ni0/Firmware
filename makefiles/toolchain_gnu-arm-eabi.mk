@@ -151,7 +151,10 @@ ARCHWARNINGS		 = -Wall \
 			   -Werror=unused-but-set-variable \
 			   -Werror=unused-variable \
 			   -Werror=double-promotion \
-			   -Werror=reorder
+			   -Werror=reorder \
+			   -Werror=uninitialized \
+			   -Werror=init-self
+#   -Werror=float-conversion - works, just needs to be phased in with some effort and needs GCC 4.9+
 #   -Wcast-qual  - generates spurious noreturn attribute warnings, try again later
 #   -Wconversion - would be nice, but too many "risky-but-safe" conversions in the code
 #   -Wcast-align - would help catch bad casts in some cases, but generates too many false positives
@@ -293,6 +296,9 @@ endef
 #
 # - compile an empty file to generate a suitable object file
 # - relink the object and insert the binary file
+# - extract the length
+# - create const unsigned $3_len with the extracted length as its value and compile it to an object file
+# - link the two generated object files together
 # - edit symbol names to suit
 #
 # NOTE: exercise caution using this with absolute pathnames; it looks
@@ -317,11 +323,14 @@ define BIN_TO_OBJ
 	@$(MKDIR) -p $(dir $2)
 	$(Q) $(ECHO) > $2.c
 	$(call COMPILE,$2.c,$2.c.o)
-	$(Q) $(LD) -r -o $2 $2.c.o -b binary $1
+	$(Q) $(LD) -r -o $2.bin.o $2.c.o -b binary $1
+	$(Q) $(ECHO) "const unsigned int $3_len = 0x`$(NM) -p --radix=x $2.bin.o | $(GREP) $(call BIN_SYM_PREFIX,$1)_size$$ | $(GREP) -o ^[0-9a-fA-F]*`;" > $2.c
+	$(call COMPILE,$2.c,$2.c.o)
+	$(Q) $(LD) -r -o $2 $2.c.o $2.bin.o
 	$(Q) $(OBJCOPY) $2 \
 		--redefine-sym $(call BIN_SYM_PREFIX,$1)_start=$3 \
-		--redefine-sym $(call BIN_SYM_PREFIX,$1)_size=$3_len \
+		--strip-symbol $(call BIN_SYM_PREFIX,$1)_size \
 		--strip-symbol $(call BIN_SYM_PREFIX,$1)_end \
 		--rename-section .data=.rodata
-	$(Q) $(REMOVE) $2.c $2.c.o
+	$(Q) $(REMOVE) $2.c $2.c.o $2.bin.o
 endef

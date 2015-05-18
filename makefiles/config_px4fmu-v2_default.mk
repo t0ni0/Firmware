@@ -43,16 +43,16 @@ MODULES		+= drivers/frsky_telemetry
 MODULES		+= modules/sensors
 MODULES		+= drivers/mkblctrl
 MODULES		+= drivers/px4flow
+MODULES		+= drivers/oreoled
+MODULES		+= drivers/gimbal
 
 #
 # System commands
 #
 MODULES		+= systemcmds/bl_update
-MODULES		+= systemcmds/boardinfo
 MODULES		+= systemcmds/mixer
 MODULES		+= systemcmds/param
 MODULES		+= systemcmds/perf
-MODULES		+= systemcmds/preflight_check
 MODULES		+= systemcmds/pwm
 MODULES		+= systemcmds/esc_calib
 MODULES		+= systemcmds/reboot
@@ -77,6 +77,7 @@ MODULES 	+= modules/land_detector
 # Estimation modules (EKF/ SO3 / other filters)
 #
 MODULES		+= modules/attitude_estimator_ekf
+MODULES		+= modules/attitude_estimator_q
 MODULES		+= modules/ekf_att_pos_estimator
 MODULES		+= modules/position_estimator_inav
 
@@ -122,6 +123,16 @@ MODULES		+= platforms/nuttx
 # OBC challenge
 #
 MODULES		+= modules/bottle_drop
+
+#
+# PX4 flow estimator, good for indoors
+#
+MODULES		+= examples/flow_position_estimator
+
+#
+# Rover apps
+#
+MODULES		+= examples/rover_steering_control
 
 #
 # Demo apps

@@ -158,7 +158,7 @@ HIL	*g_hil;
 } // namespace
 
 HIL::HIL() :
-	CDev("hilservo", PWM_OUTPUT_DEVICE_PATH/*"/dev/hil" XXXL*/),
+	CDev("hilservo", PWM_OUTPUT0_DEVICE_PATH/*"/dev/hil" XXXL*/),
 	_mode(MODE_NONE),
 	_update_rate(50),
 	_current_update_rate(0),
@@ -402,7 +402,7 @@ HIL::task_main()
 			if (_mixers != nullptr) {
 
 				/* do mixing */
-				outputs.noutputs = _mixers->mix(&outputs.output[0], num_outputs);
+				outputs.noutputs = _mixers->mix(&outputs.output[0], num_outputs, NULL);
 				outputs.timestamp = hrt_absolute_time();
 
 				/* iterate actuators */
@@ -751,7 +751,7 @@ test(void)
 {
 	int	fd;
 
-	fd = open(PWM_OUTPUT_DEVICE_PATH, 0);
+	fd = open(PWM_OUTPUT0_DEVICE_PATH, 0);
 
 	if (fd < 0) {
 		puts("open fail");

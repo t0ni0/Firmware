@@ -45,7 +45,7 @@
 #include <stdint.h>
 #include <sys/ioctl.h>
 
-#define BLINKM_DEVICE_PATH	"/dev/blinkm"
+#define BLINKM0_DEVICE_PATH	"/dev/blinkm0"
 
 /*
  * ioctl() definitions
@@ -60,7 +60,7 @@
 /** play the numbered script in (arg), repeating forever */
 #define BLINKM_PLAY_SCRIPT		_BLINKMIOC(2)
 
-/** 
+/**
  * Set the user script; (arg) is a pointer to an array of script lines,
  * where each line is an array of four bytes giving <duration>, <command>, arg[0-2]
  *
