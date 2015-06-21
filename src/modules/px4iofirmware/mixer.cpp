@@ -37,7 +37,7 @@
  * Control channel input/output mixer and failsafe.
  */
 
-#include <nuttx/config.h>
+#include <px4_config.h>
 #include <syslog.h>
 
 #include <sys/types.h>
@@ -234,7 +234,7 @@ mixer_tick(void)
 		in_mixer = false;
 
 		/* the pwm limit call takes care of out of band errors */
-		pwm_limit_calc(should_arm, mixed, r_page_servo_disarmed, r_page_servo_control_min, r_page_servo_control_max, outputs, r_page_servos, &pwm_limit);
+		pwm_limit_calc(should_arm, mixed, r_setup_pwm_reverse, r_page_servo_disarmed, r_page_servo_control_min, r_page_servo_control_max, outputs, r_page_servos, &pwm_limit);
 
 		for (unsigned i = mixed; i < PX4IO_SERVO_COUNT; i++)
 			r_page_servos[i] = 0;
@@ -272,8 +272,9 @@ mixer_tick(void)
 
 	if (mixer_servos_armed && should_arm) {
 		/* update the servo outputs. */
-		for (unsigned i = 0; i < PX4IO_SERVO_COUNT; i++)
+		for (unsigned i = 0; i < PX4IO_SERVO_COUNT; i++) {
 			up_pwm_servo_set(i, r_page_servos[i]);
+		}
 
 		/* set S.BUS1 or S.BUS2 outputs */
 
@@ -317,6 +318,13 @@ mixer_callback(uintptr_t handle,
 	case MIX_OVERRIDE:
 		if (r_page_rc_input[PX4IO_P_RC_VALID] & (1 << CONTROL_PAGE_INDEX(control_group, control_index))) {
 			control = REG_TO_FLOAT(r_page_rc_input[PX4IO_P_RC_BASE + control_index]);
+			if (control_group == 0 && control_index == 0) {
+				control += REG_TO_FLOAT(r_setup_trim_roll);
+			} else if (control_group == 0 && control_index == 1) {
+				control += REG_TO_FLOAT(r_setup_trim_pitch);
+			} else if (control_group == 0 && control_index == 2) {
+				control += REG_TO_FLOAT(r_setup_trim_yaw);
+			}
 			break;
 		}
 		return -1;
@@ -325,6 +333,13 @@ mixer_callback(uintptr_t handle,
 		/* FMU is ok but we are in override mode, use direct rc control for the available rc channels. The remaining channels are still controlled by the fmu */
 		if (r_page_rc_input[PX4IO_P_RC_VALID] & (1 << CONTROL_PAGE_INDEX(control_group, control_index))) {
 			control = REG_TO_FLOAT(r_page_rc_input[PX4IO_P_RC_BASE + control_index]);
+			if (control_group == 0 && control_index == 0) {
+				control += REG_TO_FLOAT(r_setup_trim_roll);
+			} else if (control_group == 0 && control_index == 1) {
+				control += REG_TO_FLOAT(r_setup_trim_pitch);
+			} else if (control_group == 0 && control_index == 2) {
+				control += REG_TO_FLOAT(r_setup_trim_yaw);
+			}
 			break;
 		} else if (control_index < PX4IO_CONTROL_CHANNELS && control_group < PX4IO_CONTROL_GROUPS) {
 			control = REG_TO_FLOAT(r_page_controls[CONTROL_PAGE_INDEX(control_group, control_index)]);
@@ -336,6 +351,13 @@ mixer_callback(uintptr_t handle,
 	case MIX_NONE:
 		control = 0.0f;
 		return -1;
+	}
+
+	/* limit output */
+	if (control > 1.0f) {
+		control = 1.0f;
+	} else if (control < -1.0f) {
+		control = -1.0f;
 	}
 
 	return 0;

@@ -41,7 +41,7 @@
  *
  */
 
-#include <nuttx/config.h>
+#include <px4_config.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -337,10 +337,10 @@ FixedwingAttitudeControl::FixedwingAttitudeControl() :
 	_vehicle_status_sub(-1),
 
 /* publications */
-	_rate_sp_pub(-1),
-	_attitude_sp_pub(-1),
-	_actuators_0_pub(-1),
-	_actuators_2_pub(-1),
+	_rate_sp_pub(nullptr),
+	_attitude_sp_pub(nullptr),
+	_actuators_0_pub(nullptr),
+	_actuators_2_pub(nullptr),
 
 	_rates_sp_id(0),
 	_actuators_id(0),
@@ -520,7 +520,7 @@ FixedwingAttitudeControl::vehicle_control_mode_poll()
 	orb_check(_vcontrol_mode_sub, &vcontrol_mode_updated);
 
 	if (vcontrol_mode_updated) {
-		
+
 		orb_copy(ORB_ID(vehicle_control_mode), _vcontrol_mode_sub, &_vcontrol_mode);
 	}
 }
@@ -619,11 +619,6 @@ FixedwingAttitudeControl::task_main_trampoline(int argc, char *argv[])
 void
 FixedwingAttitudeControl::task_main()
 {
-
-	/* inform about start */
-	warnx("Initializing..");
-	fflush(stdout);
-
 	/*
 	 * do subscriptions
 	 */
@@ -801,6 +796,11 @@ FixedwingAttitudeControl::task_main()
 				//warnx("_actuators_airframe.control[1] = -1.0f;");
 			}
 
+			/* if we are in rotary wing mode, do nothing */
+			if (_vehicle_status.is_rotary_wing) {
+				continue;
+			}
+
 			/* decide if in stabilized or full manual control */
 
 			if (_vcontrol_mode.flag_control_attitude_enabled) {
@@ -859,11 +859,36 @@ FixedwingAttitudeControl::task_main()
 						_yaw_ctrl.reset_integrator();
 					}
 				} else if (_vcontrol_mode.flag_control_velocity_enabled) {
+
+					/* the pilot does not want to change direction,
+					 * take straight attitude setpoint from position controller
+					 */
+					if (fabsf(_manual.y) < 0.01f && fabsf(_att.roll) < 0.2f) {
+						roll_sp = _att_sp.roll_body + _parameters.rollsp_offset_rad;
+					} else {
+						roll_sp = (_manual.y * _parameters.man_roll_max)
+								+ _parameters.rollsp_offset_rad;
+					}
+
+					pitch_sp = _att_sp.pitch_body + _parameters.pitchsp_offset_rad;
+					throttle_sp = _att_sp.thrust;
+
+					/* reset integrals where needed */
+					if (_att_sp.roll_reset_integral) {
+						_roll_ctrl.reset_integrator();
+					}
+					if (_att_sp.pitch_reset_integral) {
+						_pitch_ctrl.reset_integrator();
+					}
+					if (_att_sp.yaw_reset_integral) {
+						_yaw_ctrl.reset_integrator();
+					}
+
+				} else if (_vcontrol_mode.flag_control_altitude_enabled) {
  					/*
 					 * Velocity should be controlled and manual is enabled.
 					*/
-					roll_sp = (_manual.y * _parameters.man_roll_max - _parameters.trim_roll)
-											+ _parameters.rollsp_offset_rad;
+					roll_sp = (_manual.y * _parameters.man_roll_max) + _parameters.rollsp_offset_rad;
 					pitch_sp = _att_sp.pitch_body + _parameters.pitchsp_offset_rad;
 					throttle_sp = _att_sp.thrust;
 
@@ -890,10 +915,8 @@ FixedwingAttitudeControl::task_main()
 					 * the intended attitude setpoint. Later, after the rate control step the
 					 * trim is added again to the control signal.
 					 */
-					roll_sp = (_manual.y * _parameters.man_roll_max - _parameters.trim_roll)
-						+ _parameters.rollsp_offset_rad;
-					pitch_sp = -(_manual.x * _parameters.man_pitch_max - _parameters.trim_pitch)
-						+ _parameters.pitchsp_offset_rad;
+					roll_sp = (_manual.y * _parameters.man_roll_max) + _parameters.rollsp_offset_rad;
+					pitch_sp = -(_manual.x * _parameters.man_pitch_max) + _parameters.pitchsp_offset_rad;
 					/* allow manual control of rudder deflection */
 					yaw_manual = _manual.r;
 					throttle_sp = _manual.z;
@@ -912,11 +935,11 @@ FixedwingAttitudeControl::task_main()
 					att_sp.thrust = throttle_sp;
 
 					/* lazily publish the setpoint only once available */
-					if (_attitude_sp_pub > 0 && !_vehicle_status.is_rotary_wing) {
+					if (_attitude_sp_pub != nullptr && !_vehicle_status.is_rotary_wing) {
 						/* publish the attitude setpoint */
 						orb_publish(ORB_ID(vehicle_attitude_setpoint), _attitude_sp_pub, &att_sp);
 
-					} else if (_attitude_sp_pub < 0 && !_vehicle_status.is_rotary_wing) {
+					} else if (_attitude_sp_pub != nullptr && !_vehicle_status.is_rotary_wing) {
 						/* advertise and publish */
 						_attitude_sp_pub = orb_advertise(ORB_ID(vehicle_attitude_setpoint), &att_sp);
 					}
@@ -1050,7 +1073,7 @@ FixedwingAttitudeControl::task_main()
 
 				_rates_sp.timestamp = hrt_absolute_time();
 
-				if (_rate_sp_pub > 0) {
+				if (_rate_sp_pub != nullptr) {
 					/* publish the attitude rates setpoint */
 					orb_publish(_rates_sp_id, _rate_sp_pub, &_rates_sp);
 				} else if (_rates_sp_id) {
@@ -1060,9 +1083,9 @@ FixedwingAttitudeControl::task_main()
 
 			} else {
 				/* manual/direct control */
-				_actuators.control[0] = _manual.y;
-				_actuators.control[1] = -_manual.x;
-				_actuators.control[2] = _manual.r;
+				_actuators.control[0] = _manual.y + _parameters.trim_roll;
+				_actuators.control[1] = -_manual.x + _parameters.trim_pitch;
+				_actuators.control[2] = _manual.r + _parameters.trim_yaw;
 				_actuators.control[3] = _manual.z;
 				_actuators.control[4] = _manual.flaps;
 			}
@@ -1079,17 +1102,17 @@ FixedwingAttitudeControl::task_main()
 
 			/* Only publish if any of the proper modes are enabled */
 			if(_vcontrol_mode.flag_control_rates_enabled ||
-               _vcontrol_mode.flag_control_attitude_enabled ||
-               _vcontrol_mode.flag_control_manual_enabled)
+			   _vcontrol_mode.flag_control_attitude_enabled ||
+			   _vcontrol_mode.flag_control_manual_enabled)
 			{
 				/* publish the actuator controls */
-				if (_actuators_0_pub > 0) {
+				if (_actuators_0_pub != nullptr) {
 					orb_publish(_actuators_id, _actuators_0_pub, &_actuators);
 				} else if (_actuators_id) {
 					_actuators_0_pub= orb_advertise(_actuators_id, &_actuators);
 				}
 
-				if (_actuators_2_pub > 0) {
+				if (_actuators_2_pub != nullptr) {
 					/* publish the actuator controls*/
 					orb_publish(ORB_ID(actuator_controls_2), _actuators_2_pub, &_actuators_airframe);
 
@@ -1117,7 +1140,7 @@ FixedwingAttitudeControl::start()
 	ASSERT(_control_task == -1);
 
 	/* start the task */
-	_control_task = task_spawn_cmd("fw_att_control",
+	_control_task = px4_task_spawn_cmd("fw_att_control",
 				       SCHED_DEFAULT,
 				       SCHED_PRIORITY_MAX - 5,
 				       1600,
@@ -1154,14 +1177,17 @@ int fw_att_control_main(int argc, char *argv[])
 			err(1, "start failed");
 		}
 
-		/* avoid memory fragmentation by not exiting start handler until the task has fully started */
-		while (att_control::g_control == nullptr || !att_control::g_control->task_running()) {
-			usleep(50000);
-			printf(".");
-			fflush(stdout);
-		}
-		printf("\n");
+		/* check if the waiting is necessary at all */
+		if (att_control::g_control == nullptr || !att_control::g_control->task_running()) {
 
+			/* avoid memory fragmentation by not exiting start handler until the task has fully started */
+			while (att_control::g_control == nullptr || !att_control::g_control->task_running()) {
+				usleep(50000);
+				printf(".");
+				fflush(stdout);
+			}
+			printf("\n");
+		}
 		exit(0);
 	}
 

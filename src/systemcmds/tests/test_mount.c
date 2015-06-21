@@ -163,7 +163,7 @@ test_mount(int argc, char *argv[])
 	} else {
 
 		/* this must be the first iteration, do something */
-		cmd_fd = open(cmd_filename, O_TRUNC | O_WRONLY | O_CREAT);
+		cmd_fd = open(cmd_filename, O_TRUNC | O_WRONLY | O_CREAT, PX4_O_MODE_666);
 
 		warnx("First iteration of file test\n");
 	}
@@ -288,7 +288,7 @@ test_mount(int argc, char *argv[])
 	fsync(fileno(stdout));
 	fsync(fileno(stderr));
 	usleep(50000);
-	systemreset(false);
+	px4_systemreset(false);
 
 	/* never going to get here */
 	return 0;

@@ -39,7 +39,9 @@
  * @author Anton Babushkin <anton.babushkin@me.com>
  */
 
+#include <px4_time.h>
 #include <stdio.h>
+#include <errno.h>
 
 #include <commander/px4_custom_mode.h>
 #include <lib/geo/geo.h>
@@ -59,7 +61,6 @@
 #include <uORB/topics/position_setpoint_triplet.h>
 #include <uORB/topics/optical_flow.h>
 #include <uORB/topics/actuator_outputs.h>
-#include <uORB/topics/actuator_controls_effective.h>
 #include <uORB/topics/actuator_controls.h>
 #include <uORB/topics/actuator_armed.h>
 #include <uORB/topics/manual_control_setpoint.h>
@@ -68,9 +69,9 @@
 #include <uORB/topics/airspeed.h>
 #include <uORB/topics/battery_status.h>
 #include <uORB/topics/navigation_capabilities.h>
+#include <uORB/topics/distance_sensor.h>
 #include <drivers/drv_rc_input.h>
 #include <drivers/drv_pwm_output.h>
-#include <drivers/drv_range_finder.h>
 #include <systemlib/err.h>
 #include <mavlink/mavlink_log.h>
 
@@ -129,6 +130,12 @@ void get_mavlink_mode_state(struct vehicle_status_s *status, struct position_set
 		case vehicle_status_s::NAVIGATION_STATE_ACRO:
 			*mavlink_base_mode |= MAV_MODE_FLAG_MANUAL_INPUT_ENABLED;
 			custom_mode.main_mode = PX4_CUSTOM_MAIN_MODE_ACRO;
+			break;
+
+		case vehicle_status_s::NAVIGATION_STATE_STAB:
+			*mavlink_base_mode |= MAV_MODE_FLAG_MANUAL_INPUT_ENABLED
+								  | MAV_MODE_FLAG_STABILIZE_ENABLED;
+			custom_mode.main_mode = PX4_CUSTOM_MAIN_MODE_STABILIZED;
 			break;
 
 		case vehicle_status_s::NAVIGATION_STATE_ALTCTL:
@@ -354,6 +361,7 @@ protected:
 		}
 	}
 
+#ifndef __PX4_QURT
 	void send(const hrt_abstime t)
 	{
 		if (!mavlink_logbuffer_is_empty(_mavlink->get_logbuffer())) {
@@ -388,10 +396,10 @@ protected:
 					} else if (write_err_count < write_err_threshold) {
 						/* string to hold the path to the log */
 						char log_file_name[32] = "";
-						char log_file_path[64] = "";
+						char log_file_path[70] = "";
 
 						timespec ts;
-						clock_gettime(CLOCK_REALTIME, &ts);
+						px4_clock_gettime(CLOCK_REALTIME, &ts);
 						/* use GPS time for log file naming, e.g. /fs/microsd/2014-01-19/19_37_52.bin */
 						time_t gps_time_sec = ts.tv_sec + (ts.tv_nsec / 1e9);
 						struct tm tt;
@@ -399,17 +407,23 @@ protected:
 
 						// XXX we do not want to interfere here with the SD log app
 						strftime(log_file_name, sizeof(log_file_name), "msgs_%Y_%m_%d_%H_%M_%S.txt", &tt);
-						snprintf(log_file_path, sizeof(log_file_path), "/fs/microsd/%s", log_file_name);
+						snprintf(log_file_path, sizeof(log_file_path), PX4_ROOTFSDIR"/fs/microsd/%s", log_file_name);
 						fp = fopen(log_file_path, "ab");
 
-						/* write first message */
-						fputs(msg.text, fp);
-						fputs("\n", fp);
+						if (fp != NULL) {
+							/* write first message */
+							fputs(msg.text, fp);
+							fputs("\n", fp);
+						}
+						else {
+							warn("Failed to open %s errno=%d", log_file_path, errno);
+						}
 					}
 				}
 			}
 		}
 	}
+#endif
 };
 
 class MavlinkStreamCommandLong : public MavlinkStream
@@ -997,7 +1011,7 @@ protected:
 		mavlink_system_time_t msg;
 		timespec tv;
 
-		clock_gettime(CLOCK_REALTIME, &tv);
+		px4_clock_gettime(CLOCK_REALTIME, &tv);
 
 		msg.time_boot_ms = hrt_absolute_time() / 1000;
 		msg.time_unix_usec = (uint64_t)tv.tv_sec * 1000000 + tv.tv_nsec / 1000;
@@ -2176,7 +2190,6 @@ protected:
 	}
 };
 
-
 class MavlinkStreamDistanceSensor : public MavlinkStream
 {
 public:
@@ -2202,12 +2215,12 @@ public:
 
 	unsigned get_size()
 	{
-		return _range_sub->is_published() ? (MAVLINK_MSG_ID_DISTANCE_SENSOR_LEN + MAVLINK_NUM_NON_PAYLOAD_BYTES) : 0;
+		return _distance_sensor_sub->is_published() ? (MAVLINK_MSG_ID_DISTANCE_SENSOR_LEN + MAVLINK_NUM_NON_PAYLOAD_BYTES) : 0;
 	}
 
 private:
-	MavlinkOrbSubscription *_range_sub;
-	uint64_t _range_time;
+	MavlinkOrbSubscription *_distance_sensor_sub;
+	uint64_t _dist_sensor_time;
 
 	/* do not allow top copying this class */
 	MavlinkStreamDistanceSensor(MavlinkStreamDistanceSensor &);
@@ -2215,23 +2228,34 @@ private:
 
 protected:
 	explicit MavlinkStreamDistanceSensor(Mavlink *mavlink) : MavlinkStream(mavlink),
-		_range_sub(_mavlink->add_orb_subscription(ORB_ID(sensor_range_finder))),
-		_range_time(0)
+		_distance_sensor_sub(_mavlink->add_orb_subscription(ORB_ID(distance_sensor))),
+		_dist_sensor_time(0)
 	{}
 
 	void send(const hrt_abstime t)
 	{
-		struct range_finder_report range;
+		struct distance_sensor_s dist_sensor;
 
-		if (_range_sub->update(&_range_time, &range)) {
+		if (_distance_sensor_sub->update(&_dist_sensor_time, &dist_sensor)) {
 
 			mavlink_distance_sensor_t msg;
 
-			msg.time_boot_ms = range.timestamp / 1000;
+			msg.time_boot_ms = dist_sensor.timestamp / 1000; /* us to ms */
 
-			switch (range.type) {
-			case RANGE_FINDER_TYPE_LASER:
+			/* TODO: use correct ID here */
+			msg.id = 0;
+
+			switch (dist_sensor.type) {
+			case MAV_DISTANCE_SENSOR_ULTRASOUND:
+				msg.type = MAV_DISTANCE_SENSOR_ULTRASOUND;
+				break;
+
+			case MAV_DISTANCE_SENSOR_LASER:
 				msg.type = MAV_DISTANCE_SENSOR_LASER;
+				break;
+
+			case MAV_DISTANCE_SENSOR_INFRARED:
+				msg.type = MAV_DISTANCE_SENSOR_INFRARED;
 				break;
 
 			default:
@@ -2239,12 +2263,11 @@ protected:
 				break;
 			}
 
-			msg.id = 0;
-			msg.orientation = 0;
-			msg.min_distance = range.minimum_distance * 100;
-			msg.max_distance = range.maximum_distance * 100;
-			msg.current_distance = range.distance * 100;
-			msg.covariance = 20;
+			msg.orientation = dist_sensor.orientation;
+			msg.min_distance = dist_sensor.min_distance * 100.0f; /* m to cm */
+			msg.max_distance = dist_sensor.max_distance * 100.0f; /* m to cm */
+			msg.current_distance = dist_sensor.current_distance * 100.0f; /* m to cm */
+			msg.covariance = dist_sensor.covariance;
 
 			_mavlink->send_message(MAVLINK_MSG_ID_DISTANCE_SENSOR, &msg);
 		}
