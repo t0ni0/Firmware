@@ -97,6 +97,17 @@ PARAM_DEFINE_FLOAT(INAV_W_Z_VIS_P, 5.0f);
 PARAM_DEFINE_FLOAT(INAV_W_Z_SONAR, 3.0f);
 
 /**
+ * Z axis weight for lidar
+ *
+ * Weight (cutoff frequency) for lidar measurements.
+ *
+ * @min 0.0
+ * @max 10.0
+ * @group Position Estimator INAV
+ */
+PARAM_DEFINE_FLOAT(INAV_W_Z_LIDAR, 5.0f);
+
+/**
  * XY axis weight for GPS position
  *
  * Weight (cutoff frequency) for GPS position measurements.
@@ -139,6 +150,18 @@ PARAM_DEFINE_FLOAT(INAV_W_XY_VIS_P, 7.0f);
  * @group Position Estimator INAV
  */
 PARAM_DEFINE_FLOAT(INAV_W_XY_VIS_V, 0.0f);
+
+/**
+ * Weight for mocap system
+ *
+ * Weight (cutoff frequency) for mocap position measurements.
+ *
+ * @min 0.0
+ * @max 10.0
+ * @group Position Estimator INAV
+ */
+
+ PARAM_DEFINE_FLOAT(INAV_W_MOC_P, 10.0f);
 
 /**
  * XY axis weight for optical flow
@@ -305,17 +328,19 @@ PARAM_DEFINE_FLOAT(INAV_SONAR_ZMIN, 0.5f);
  */
 PARAM_DEFINE_INT32(INAV_ENABLED, 1);
 
-int parameters_init(struct position_estimator_inav_param_handles *h)
+int inav_parameters_init(struct position_estimator_inav_param_handles *h)
 {
 	h->w_z_baro = param_find("INAV_W_Z_BARO");
 	h->w_z_gps_p = param_find("INAV_W_Z_GPS_P");
 	h->w_z_gps_v = param_find("INAV_W_Z_GPS_V");
 	h->w_z_vision_p = param_find("INAV_W_Z_VIS_P");
 	h->w_z_sonar = param_find("INAV_W_Z_SONAR");
+	h->w_z_lidar = param_find("INAV_W_Z_LIDAR");
 	h->w_xy_gps_p = param_find("INAV_W_XY_GPS_P");
 	h->w_xy_gps_v = param_find("INAV_W_XY_GPS_V");
 	h->w_xy_vision_p = param_find("INAV_W_XY_VIS_P");
 	h->w_xy_vision_v = param_find("INAV_W_XY_VIS_V");
+	h->w_mocap_p = param_find("INAV_W_MOC_P");
 	h->w_xy_flow = param_find("INAV_W_XY_FLOW");
 	h->w_xy_res_v = param_find("INAV_W_XY_RES_V");
 	h->w_gps_flow = param_find("INAV_W_GPS_FLOW");
@@ -332,19 +357,21 @@ int parameters_init(struct position_estimator_inav_param_handles *h)
 	h->no_vision = param_find("CBRK_NO_VISION");
 	h->delay_gps = param_find("INAV_DELAY_GPS");
 
-	return OK;
+	return 0;
 }
 
-int parameters_update(const struct position_estimator_inav_param_handles *h, struct position_estimator_inav_params *p)
+int inav_parameters_update(const struct position_estimator_inav_param_handles *h, struct position_estimator_inav_params *p)
 {
 	param_get(h->w_z_baro, &(p->w_z_baro));
 	param_get(h->w_z_gps_p, &(p->w_z_gps_p));
 	param_get(h->w_z_vision_p, &(p->w_z_vision_p));
-	param_get(h->w_z_sonar, &(p->w_z_sonar));
+    param_get(h->w_z_sonar, &(p->w_z_sonar));
+    param_get(h->w_z_lidar, &(p->w_z_lidar));
 	param_get(h->w_xy_gps_p, &(p->w_xy_gps_p));
 	param_get(h->w_xy_gps_v, &(p->w_xy_gps_v));
 	param_get(h->w_xy_vision_p, &(p->w_xy_vision_p));
 	param_get(h->w_xy_vision_v, &(p->w_xy_vision_v));
+	param_get(h->w_mocap_p, &(p->w_mocap_p));
 	param_get(h->w_xy_flow, &(p->w_xy_flow));
 	param_get(h->w_xy_res_v, &(p->w_xy_res_v));
 	param_get(h->w_gps_flow, &(p->w_gps_flow));
@@ -361,5 +388,5 @@ int parameters_update(const struct position_estimator_inav_param_handles *h, str
 	param_get(h->no_vision, &(p->no_vision));
 	param_get(h->delay_gps, &(p->delay_gps));
 
-	return OK;
+	return 0;
 }
