@@ -321,6 +321,7 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 	float corr_sonar_filtered = 0.0f;
 
 	float corr_lidar = 0.0f;
+	float prev_lidar = 0.0f;
 
 	float corr_flow[] = { 0.0f, 0.0f };	// N E
 	float w_flow = 0.0f;
@@ -361,8 +362,8 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 	memset(&mocap, 0, sizeof(mocap));
 	struct vehicle_global_position_s global_pos;
 	memset(&global_pos, 0, sizeof(global_pos));
-	struct distance_sensor_s lidar;
-	memset(&lidar, 0, sizeof(lidar));
+    struct distance_sensor_s lidar;
+    memset(&lidar, 0, sizeof(lidar));
 
 	/* subscribe */
 	int parameter_update_sub = orb_subscribe(ORB_ID(parameter_update));
@@ -884,7 +885,22 @@ int position_estimator_inav_thread_main(int argc, char *argv[])
 				orb_copy(ORB_ID(distance_sensor), distance_sensor_sub, &lidar);
 
 				if (lidar.timestamp != lidar_timestamp && lidar.type == MAV_DISTANCE_SENSOR_LASER) {
+
+					if ((lidar.current_distance - prev_lidar > 0.5f) || (lidar.current_distance - prev_lidar < -0.5f)) {
+					    // Spike detected, skip
+					    lidar.current_distance = prev_lidar;
+					} else {
+					    prev_lidar = lidar.current_distance;
+					}
+
 					corr_lidar = -lidar.current_distance - z_est[0];
+//
+//					if (corr_lidar > 0.1f) {
+//					    corr_lidar = 0.1f;
+//					} else if (corr_lidar < -0.1f) {
+//					    corr_lidar = -0.1f;
+//					}
+
 					lidar_valid = true;
 					lidar_timestamp = lidar.timestamp;
 					lidar_updates++;

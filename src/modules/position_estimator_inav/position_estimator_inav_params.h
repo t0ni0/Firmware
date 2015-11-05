@@ -68,6 +68,7 @@ struct position_estimator_inav_params {
 	float land_thr;
 	int32_t no_vision;
 	float delay_gps;
+	float lidar_spike;
 };
 
 struct position_estimator_inav_param_handles {
@@ -97,6 +98,7 @@ struct position_estimator_inav_param_handles {
 	param_t land_thr;
 	param_t no_vision;
 	param_t delay_gps;
+	param_t lidar_spike;
 };
 
 #define CBRK_NO_VISION_KEY	328754

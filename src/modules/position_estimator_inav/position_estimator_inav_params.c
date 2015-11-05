@@ -314,6 +314,7 @@ PARAM_DEFINE_INT32(CBRK_NO_VISION, 0);
 
 PARAM_DEFINE_FLOAT(INAV_FLOW_Z_OFF, 0.0f);
 PARAM_DEFINE_FLOAT(INAV_SONAR_ZMIN, 0.5f);
+PARAM_DEFINE_FLOAT(INAV_LIDARSPIKE, 0.5f);
 
 /**
  * INAV enabled
@@ -356,6 +357,7 @@ int inav_parameters_init(struct position_estimator_inav_param_handles *h)
 	h->land_thr = param_find("INAV_LAND_THR");
 	h->no_vision = param_find("CBRK_NO_VISION");
 	h->delay_gps = param_find("INAV_DELAY_GPS");
+	h->lidar_spike = param_find("INAV_LIDARSPIKE");
 
 	return 0;
 }
@@ -387,6 +389,7 @@ int inav_parameters_update(const struct position_estimator_inav_param_handles *h
 	param_get(h->land_thr, &(p->land_thr));
 	param_get(h->no_vision, &(p->no_vision));
 	param_get(h->delay_gps, &(p->delay_gps));
+	param_get(h->lidar_spike, &(p->lidar_spike));
 
 	return 0;
 }
